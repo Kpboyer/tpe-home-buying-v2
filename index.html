@@ -1,0 +1,1492 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Home Purchase Decision Tool</title>
+  <script src="https://unpkg.com/react@18.2.0/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.23.6/babel.min.js"></script>
+  <style>body{margin:0;padding:0}</style>
+
+  <!-- =================================================================== -->
+  <!--  CUSTOMIZE YOUR TOOL HERE                                            -->
+  <!--  Edit the values between the quotes below. Don't touch anything      -->
+  <!--  else. Save the file, then double-click it to open in a browser.     -->
+  <!-- =================================================================== -->
+  <script>
+    window.TPE_CONFIG = {
+
+      // ---- YOUR NAME & TITLES (shown in the header and on the start screen) ----
+      brandName:    "The Papercut Effect",      // e.g. "Jane Smith Real Estate"
+      toolSubtitle: "Home Purchase Tool",       // e.g. "Find Your Home Together"
+
+      // ---- YOUR BRAND COLORS (use hex codes — grab them from your logo) ----
+      colors: {
+        primary:    "#1A3D2B",   // main dark color (header background)
+        secondary:  "#2D5540",   // secondary dark
+        accent:     "#B8985A",   // accent / highlights (buttons, progress)
+        background: "#F8F3EC",    // page background (a soft cream works well)
+        panel:      "#EDF2EE",    // light panel background
+        blush:      "#C9897A",    // warm secondary accent
+        muted:      "#5A6B5E"     // muted text
+      },
+
+      // ---- AI ANALYSIS ----
+      //  This version calls a secure Netlify Function, so NO key goes here.
+      //  Your Anthropic key lives in Netlify (Environment variables →
+      //  ANTHROPIC_API_KEY) and never reaches the browser.
+      //  Leave apiEndpoint as-is unless your function lives somewhere custom.
+      apiEndpoint: "/.netlify/functions/analyze"
+
+    };
+  </script>
+
+  <!-- ===== PER-AGENT BRANDING VIA URL (do not edit) =====================
+       Lets each agent get their own branded version from ONE deployment.
+       Share links like:
+         https://YOURSITE.netlify.app/?agent=Jane%20Smith&brokerage=ABC%20Realty&color=1f6feb
+       Supported params: agent, subtitle, brokerage, color, accent, logo
+       Anything not supplied falls back to the defaults above.
+  -->
+  <script>
+    (function(){
+      try{
+        var q=new URLSearchParams(window.location.search);
+        var C=window.TPE_CONFIG=window.TPE_CONFIG||{};
+        C.colors=C.colors||{};
+        var agent=q.get("agent");
+        if(agent) C.brandName=agent;
+        var sub=q.get("subtitle");
+        if(sub) C.toolSubtitle=sub;
+        else if(q.get("brokerage")) C.toolSubtitle=q.get("brokerage");
+        function hex(v){ if(!v) return null; v=v.replace(/^#/,""); return /^[0-9a-fA-F]{6}$/.test(v)?("#"+v):null; }
+        var primary=hex(q.get("color"));
+        if(primary){ C.colors.primary=primary; C.colors.secondary=primary; }
+        var accent=hex(q.get("accent"));
+        if(accent) C.colors.accent=accent;
+        var logo=q.get("logo");
+        if(logo) C.logoUrl=logo;
+      }catch(e){ /* ignore bad params, fall back to defaults */ }
+    })();
+  </script>
+  <!-- =================================================================== -->
+  <!--  END OF CUSTOMIZE SECTION — do not edit below this line             -->
+  <!-- =================================================================== -->
+</head>
+<body>
+  <div id="root"></div>
+  <div id="tpe-error" style="display:none;font-family:system-ui,sans-serif;max-width:640px;margin:40px auto;padding:24px;border:1px solid #e0c0c0;background:#fdf3f3;border-radius:10px;color:#7a2b2b;line-height:1.5">
+    <strong>The tool couldn't start.</strong>
+    <div id="tpe-error-msg" style="margin-top:8px;font-size:14px;color:#933"></div>
+    <div style="margin-top:10px;font-size:13px;color:#666">If you opened this file directly and see this, your browser may be blocking the scripts it needs to load from the internet. Try a different browser (Chrome works well), make sure you\'re online, or host the file (see the customization guide).</div>
+  </div>
+  <script>
+    // show a helpful message if React/Babel didn't load, instead of a blank page
+    window.addEventListener('load',function(){
+      setTimeout(function(){
+        var root=document.getElementById('root');
+        var libsMissing = (typeof React==='undefined'||typeof ReactDOM==='undefined'||typeof Babel==='undefined');
+        if((!root||root.innerHTML.trim()==='') ){
+          var box=document.getElementById('tpe-error');
+          var msg=document.getElementById('tpe-error-msg');
+          if(box){box.style.display='block';
+            msg.textContent = libsMissing
+              ? 'Required libraries (React/Babel) did not load from the internet.'
+              : 'The app loaded but did not render. Check the browser console (F12) for details.';
+          }
+        }
+      },4000);
+    });
+    window.addEventListener('error',function(e){
+      var box=document.getElementById('tpe-error');var msg=document.getElementById('tpe-error-msg');
+      if(box && box.style.display==='none'){box.style.display='block'; if(msg) msg.textContent=(e.message||'Script error')+'';}
+    });
+  </script>
+  <script type="text/babel" data-presets="react">
+
+const _CFG = (typeof window!=="undefined" && window.TPE_CONFIG) ? window.TPE_CONFIG : {};
+const _col = _CFG.colors || {};
+const C = {
+  darkGreen: _col.primary   || "#1A3D2B",
+  sage:      _col.secondary || "#2D5540",
+  cream:     _col.background|| "#F8F3EC",
+  blush:     _col.blush     || "#C9897A",
+  gold:      _col.accent    || "#B8985A",
+  white: "#FFFFFF",
+  lightSage: _col.panel     || "#EDF2EE",
+  mutedText: _col.muted     || "#5A6B5E",
+};
+
+// ── Path definitions ────────────────────────────────────────────────────────
+const PATHS = {
+  kids_active: {
+    id: "kids_active",
+    icon: "◈",
+    title: "Kids at home, buying now",
+    subtitle: "This home needs to work for your family today — schools, activities, space, and the neighborhood they'll grow up in.",
+    example: "e.g. kids are 6 and 9, need to be in the right district before September",
+    stages: ["Family", "Urgency", "Location", "Home", "Future", "Risk", "Decisions", "Partners", "Analysis"],
+    showSchools: true, showKids: true, showFutureRetirement: false, showFutureLite: false,
+    heroQuestion: "Kids in tow. Let's figure out what your family needs right now — and how this home grows with you.",
+  },
+  kids_launching: {
+    id: "kids_launching",
+    icon: "◇",
+    title: "Kids at home, buying for later",
+    subtitle: "You have kids now but you're planning a move they may not be part of — an empty nest home, a retirement base, or a fresh start.",
+    example: "e.g. kids are 8 and 12, but we're planning for when they're in their 20s",
+    stages: ["Family", "Urgency", "Location", "Home", "Future", "Risk", "Decisions", "Partners", "Analysis"],
+    showSchools: false, showKids: true, showFutureRetirement: true, showFutureLite: false,
+    heroQuestion: "You're planning for the next chapter — not the current one. Let's focus on the life you're building toward.",
+  },
+  no_kids: {
+    id: "no_kids",
+    icon: "○",
+    title: "No kids — just us",
+    subtitle: "Lifestyle, community, and your long-term vision take center stage. Schools aren't part of the equation.",
+    example: "e.g. child-free by choice, kids are grown and gone, or it's just the two of you",
+    stages: ["Family", "Urgency", "Location", "Home", "Future", "Risk", "Decisions", "Partners", "Analysis"],
+    showSchools: false, showKids: false, showFutureRetirement: true, showFutureLite: false,
+    heroQuestion: "It's the two of you. Let's find a place that fits the life you actually want to live.",
+  },
+
+};
+
+// ── CSS ──────────────────────────────────────────────────────────────────────
+const css = `
+  @import url('https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Lato:wght@300;400;600&display=swap');
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:${C.cream};font-family:'Lato',sans-serif;color:${C.darkGreen}}
+  .app{min-height:100vh;background:${C.cream}}
+
+  /* Header */
+  .header{background:${C.darkGreen};padding:24px 40px;display:flex;align-items:baseline;gap:16px}
+  .header-title{font-family:'EB Garamond',serif;font-size:22px;color:${C.cream};letter-spacing:.02em}
+  .header-sub{font-size:11px;color:${C.gold};letter-spacing:.12em;text-transform:uppercase}
+
+  /* Progress */
+  .progress-wrap{background:${C.sage};height:3px}
+  .progress-bar{height:3px;background:${C.gold};transition:width .5s ease}
+  .stage-label{background:${C.lightSage};border-bottom:1px solid #d5e0d8;padding:9px 40px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:${C.sage};font-weight:600;display:flex;justify-content:space-between;align-items:center}
+  .stage-path-tag{font-size:10px;letter-spacing:.08em;color:${C.gold};font-weight:700}
+
+  /* Path selector */
+  .path-screen{min-height:100vh;background:${C.cream};display:flex;flex-direction:column}
+  .path-hero{background:${C.darkGreen};padding:52px 40px 44px;position:relative;overflow:hidden}
+  .path-hero::before{content:'';position:absolute;bottom:-60px;right:-60px;width:220px;height:220px;border-radius:50%;background:rgba(184,152,90,.08);pointer-events:none}
+  .path-hero-label{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:${C.gold};font-weight:700;margin-bottom:14px}
+  .path-hero-title{font-family:'EB Garamond',serif;font-size:38px;color:${C.cream};line-height:1.15;margin-bottom:12px;max-width:560px}
+  .path-hero-sub{font-size:15px;color:rgba(248,243,236,.6);line-height:1.7;max-width:480px}
+  .path-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:40px;max-width:780px;margin:0 auto;width:100%}
+  .path-card{background:${C.white};border:1.5px solid #dde8e0;border-radius:12px;padding:28px 26px;cursor:pointer;transition:all .18s;position:relative;overflow:hidden}
+  .path-card:hover{border-color:${C.sage};box-shadow:0 4px 20px rgba(26,61,43,.08);transform:translateY(-1px)}
+  .path-card.selected{border-color:${C.darkGreen};background:${C.lightSage}}
+  .path-card-icon{font-size:28px;color:${C.gold};margin-bottom:14px;display:block;line-height:1}
+  .path-card-title{font-family:'EB Garamond',serif;font-size:20px;color:${C.darkGreen};margin-bottom:6px}
+  .path-card-sub{font-size:13px;color:${C.mutedText};line-height:1.6}
+  .path-card-example{margin-top:10px;font-size:11px;color:${C.gold};font-style:italic;line-height:1.5}
+  .path-card-stages{margin-top:10px;display:flex;flex-wrap:wrap;gap:5px}
+  .path-stage-chip{font-size:10px;letter-spacing:.06em;text-transform:uppercase;padding:3px 8px;border-radius:10px;background:#edf2ee;color:${C.sage};font-weight:600}
+  .path-cta{padding:0 40px 48px;max-width:780px;margin:0 auto;width:100%}
+  .path-hero-msg{background:${C.lightSage};border-left:3px solid ${C.gold};border-radius:0 6px 6px 0;padding:14px 18px;margin-bottom:20px;font-family:'EB Garamond',serif;font-size:16px;color:${C.darkGreen};line-height:1.6}
+
+  /* Main */
+  .main{max-width:780px;margin:0 auto;padding:48px 24px 80px}
+  .section-title{font-family:'EB Garamond',serif;font-size:32px;color:${C.darkGreen};margin-bottom:8px;line-height:1.2}
+  .section-desc{font-size:15px;color:${C.mutedText};line-height:1.7;margin-bottom:36px}
+  .card{background:${C.white};border-radius:8px;border:1px solid #dde8e0;padding:28px 32px;margin-bottom:20px}
+  .card-label{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:${C.gold};font-weight:600;margin-bottom:14px}
+  label{display:block;font-size:14px;font-weight:600;color:${C.darkGreen};margin-bottom:6px}
+  .hint{font-size:12px;color:${C.mutedText};margin-bottom:10px;line-height:1.5}
+  input[type="text"],input[type="number"],select,textarea{width:100%;padding:10px 14px;border-radius:6px;border:1.5px solid #c8d8cc;background:#fafcfb;font-family:'Lato',sans-serif;font-size:14px;color:${C.darkGreen};outline:none;transition:border-color .2s}
+  input:focus,select:focus,textarea:focus{border-color:${C.sage};background:${C.white}}
+  textarea{min-height:80px;resize:vertical;line-height:1.6}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .row3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+
+  .member-card{border:1.5px solid #d5e0d8;border-radius:8px;padding:18px 20px;background:#fafcfb;margin-bottom:12px}
+  .member-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
+  .member-name{font-family:'EB Garamond',serif;font-size:17px;font-weight:500}
+  .remove-btn{background:none;border:none;cursor:pointer;color:${C.blush};font-size:18px;line-height:1;padding:2px 6px}
+  .add-btn{background:none;border:1.5px dashed ${C.sage};border-radius:6px;color:${C.sage};font-size:13px;font-weight:600;cursor:pointer;padding:10px 20px;width:100%;letter-spacing:.05em;transition:background .2s}
+  .add-btn:hover{background:${C.lightSage}}
+
+  .chips{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+  .chip{padding:7px 14px;border-radius:20px;font-size:13px;cursor:pointer;border:1.5px solid #c8d8cc;background:#fafcfb;color:${C.mutedText};transition:all .15s;font-family:'Lato',sans-serif}
+  .chip.selected{background:${C.darkGreen};border-color:${C.darkGreen};color:${C.cream};font-weight:600}
+
+  .slider-row{display:flex;align-items:center;gap:12px;margin-top:6px}
+  .slider-label-row{display:flex;justify-content:space-between;font-size:11px;color:${C.mutedText};margin-top:4px}
+  input[type="range"]{flex:1;accent-color:${C.sage}}
+  .slider-val{background:${C.darkGreen};color:${C.cream};border-radius:4px;padding:2px 10px;font-size:13px;font-weight:600;min-width:36px;text-align:center}
+
+  .priority-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:8px}
+  .priority-item{border:1.5px solid #d5e0d8;border-radius:6px;padding:12px 14px;display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .priority-item-label{font-size:13px;color:${C.darkGreen};flex:1}
+  .priority-dots{display:flex;gap:4px}
+  .dot{width:22px;height:22px;border-radius:50%;border:1.5px solid #c8d8cc;background:#fafcfb;cursor:pointer;transition:all .15s}
+  .dot.d1.active{background:#d5e8da;border-color:#a8cbb0}
+  .dot.d2.active{background:#a8cbb0;border-color:${C.sage}}
+  .dot.d3.active{background:${C.sage};border-color:${C.darkGreen}}
+
+  .urgency-cards{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .ugcard{border:1.5px solid #d5e0d8;border-radius:8px;padding:16px 18px;cursor:pointer;transition:all .15s;background:#fafcfb}
+  .ugcard.selected{border-color:${C.darkGreen};background:${C.lightSage}}
+  .ugcard-title{font-size:13px;font-weight:600;color:${C.darkGreen};margin-bottom:4px}
+  .ugcard-desc{font-size:12px;color:${C.mutedText};line-height:1.5}
+
+  .horizon-cards{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  .hcard{border:1.5px solid #d5e0d8;border-radius:8px;padding:16px 18px;cursor:pointer;transition:all .15s;background:#fafcfb}
+  .hcard.selected{border-color:${C.darkGreen};background:${C.lightSage}}
+  .hcard-title{font-size:13px;font-weight:600;color:${C.darkGreen};margin-bottom:4px}
+  .hcard-desc{font-size:12px;color:${C.mutedText};line-height:1.5}
+
+  .tl-bar{display:flex;border-radius:8px;overflow:hidden;border:1px solid #dde8e0;margin:14px 0}
+  .tl-seg{flex:1;padding:13px 8px;text-align:center;cursor:pointer;transition:all .15s;background:#fafcfb;border-right:1px solid #dde8e0}
+  .tl-seg:last-child{border-right:none}
+  .tl-seg.active{background:${C.darkGreen}}
+  .tl-seg-label{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase}
+  .tl-seg.active .tl-seg-label{color:${C.cream}}
+  .tl-seg:not(.active) .tl-seg-label{color:${C.mutedText}}
+  .tl-seg-sub{font-size:10px;margin-top:3px}
+  .tl-seg.active .tl-seg-sub{color:${C.gold}}
+  .tl-seg:not(.active) .tl-seg-sub{color:#b0bdb3}
+
+  /* Callout banner */
+  .path-callout{background:${C.lightSage};border-left:3px solid ${C.gold};border-radius:0 6px 6px 0;padding:12px 16px;margin-bottom:20px;font-size:13px;color:${C.darkGreen};line-height:1.6}
+  .path-callout strong{color:${C.sage}}
+
+  .btn-primary{background:${C.darkGreen};color:${C.cream};border:none;border-radius:6px;padding:14px 32px;font-family:'Lato',sans-serif;font-size:14px;font-weight:600;letter-spacing:.06em;cursor:pointer;transition:background .2s;text-transform:uppercase}
+  .btn-primary:hover{background:${C.sage}}
+  .btn-primary:disabled{background:#a8b8ac;cursor:not-allowed}
+  .btn-secondary{background:none;border:1.5px solid ${C.darkGreen};color:${C.darkGreen};border-radius:6px;padding:12px 28px;font-family:'Lato',sans-serif;font-size:14px;font-weight:600;cursor:pointer;transition:all .2s}
+  .btn-secondary:hover{background:${C.lightSage}}
+  .btn-ghost{background:none;border:none;color:${C.mutedText};font-size:12px;cursor:pointer;letter-spacing:.04em;text-decoration:underline;padding:4px 0}
+  .btn-row{display:flex;gap:14px;margin-top:36px;justify-content:flex-end;align-items:center}
+  .btn-row-left{margin-right:auto}
+
+  /* Output */
+  .output-section{margin-bottom:28px}
+  .output-section-title{font-family:'EB Garamond',serif;font-size:20px;color:${C.darkGreen};border-bottom:2px solid ${C.gold};padding-bottom:8px;margin-bottom:16px}
+  .stance-row{display:flex;border-radius:8px;overflow:hidden;border:1px solid #dde8e0;margin-bottom:10px}
+  .stance-tag{padding:10px 16px;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;min-width:90px;display:flex;align-items:center;justify-content:center}
+  .s-firm{background:${C.darkGreen};color:${C.cream}}
+  .s-flex{background:${C.gold};color:${C.darkGreen}}
+  .stance-body{padding:10px 16px;font-size:14px;color:${C.darkGreen};flex:1;line-height:1.5}
+  .stance-note{padding:10px 14px;font-size:12px;color:${C.mutedText};border-left:1px solid #e8ede9;background:#fafcfb;max-width:200px;line-height:1.5}
+  .conflict-box{background:#fff5f3;border-left:4px solid ${C.blush};border-radius:0 8px 8px 0;padding:16px 20px;margin-bottom:10px}
+  .conflict-title{font-size:13px;font-weight:700;color:${C.blush};margin-bottom:4px;letter-spacing:.04em}
+  .conflict-body{font-size:13px;color:${C.darkGreen};line-height:1.6}
+  .summary-box{background:${C.lightSage};border-left:4px solid ${C.gold};border-radius:0 8px 8px 0;padding:20px 24px;margin-bottom:24px;font-family:'EB Garamond',serif;font-size:17px;line-height:1.7;color:${C.darkGreen}}
+  .horizon-out-card{border-radius:8px;overflow:hidden;border:1px solid #dde8e0;margin-bottom:12px}
+  .horizon-out-hdr{background:${C.sage};padding:10px 18px;display:flex;justify-content:space-between;align-items:center}
+  .horizon-out-title{font-size:13px;font-weight:700;color:${C.cream}}
+  .horizon-out-tag{font-size:10px;letter-spacing:.08em;text-transform:uppercase;font-weight:700}
+  .horizon-out-body{padding:14px 18px;font-size:13px;color:${C.darkGreen};line-height:1.65;background:${C.white}}
+
+  .local-panel{background:${C.darkGreen};border-radius:10px;padding:28px 32px;margin-bottom:28px;position:relative;overflow:hidden}
+  .local-panel::after{content:'◎';position:absolute;top:12px;right:22px;font-size:52px;color:rgba(184,152,90,.13);pointer-events:none}
+  .local-panel-title{font-family:'EB Garamond',serif;font-size:20px;color:${C.cream};margin-bottom:4px}
+  .local-panel-sub{font-size:12px;color:rgba(248,243,236,.45);margin-bottom:18px}
+  .li-block{background:rgba(248,243,236,.07);border-radius:8px;padding:18px 20px;margin-bottom:12px}
+  .li-heading{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:${C.gold};margin-bottom:8px}
+  .li-body{font-size:13px;color:rgba(248,243,236,.85);line-height:1.75}
+  .ldots{display:flex;align-items:center;gap:7px;padding:20px 0 4px}
+  .ldot{width:7px;height:7px;border-radius:50%;background:${C.gold};animation:pulse 1.4s infinite}
+  .ldot:nth-child(2){animation-delay:.2s}
+  .ldot:nth-child(3){animation-delay:.4s}
+  .ldot-text{font-size:12px;color:rgba(248,243,236,.5)}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.2}}
+
+  .agent-box{background:${C.darkGreen};border-radius:10px;padding:28px 32px;margin-top:32px}
+  .agent-box-title{font-family:'EB Garamond',serif;font-size:20px;color:${C.cream};margin-bottom:14px}
+  .agent-out{background:rgba(248,243,236,.08);border-radius:6px;padding:20px;font-size:13px;color:rgba(248,243,236,.85);line-height:1.8;white-space:pre-wrap;font-family:'Lato',sans-serif;max-height:360px;overflow-y:auto}
+  .copy-btn{margin-top:14px;background:${C.gold};border:none;border-radius:6px;padding:10px 24px;font-family:'Lato',sans-serif;font-size:13px;font-weight:700;letter-spacing:.06em;cursor:pointer;color:${C.darkGreen};text-transform:uppercase;transition:opacity .2s}
+  .copy-btn:hover{opacity:.85}
+
+  .loading-wrap{text-align:center;padding:60px 0}
+  .spinner{width:36px;height:36px;border-radius:50%;border:3px solid #d5e8da;border-top-color:${C.sage};animation:spin .9s linear infinite;margin:0 auto 16px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .loading-text{font-family:'EB Garamond',serif;font-size:18px;color:${C.sage}}
+  .loading-sub{font-size:13px;color:${C.mutedText};margin-top:6px}
+  .error-box{background:#fff5f3;border:1.5px solid ${C.blush};border-radius:8px;padding:20px 24px;margin-bottom:20px;color:${C.blush};font-size:14px}
+
+  @media(max-width:620px){
+    .path-grid{grid-template-columns:1fr;padding:24px 20px}
+    .path-hero{padding:36px 20px 32px}
+    .path-cta{padding:0 20px 36px}
+    .main{padding:28px 16px 60px}
+    .row2,.row3,.urgency-cards,.horizon-cards,.priority-grid{grid-template-columns:1fr}
+    .header{padding:18px 20px}
+    .card{padding:20px}
+    .tl-bar{flex-direction:column}
+    .tl-seg{border-right:none;border-bottom:1px solid #dde8e0}
+    .stage-label{padding:9px 20px}
+  }
+`;
+
+// ── Constants ─────────────────────────────────────────────────────────────
+const URGENCY_OPTIONS = [
+  { id:"lease", title:"Lease ending", desc:"Rental situation has a defined end date." },
+  { id:"school", title:"School timing", desc:"Need to be settled before enrollment deadlines." },
+  { id:"life_event", title:"Life event", desc:"Marriage, baby, aging parent, job change." },
+  { id:"financial", title:"Financial window", desc:"Rates, savings, or inheritance make now feel right." },
+  { id:"no_urgency", title:"No real urgency", desc:"Right house over right timeline." },
+  { id:"emotional", title:"Emotional readiness", desc:"Done renting by default. Ready to commit." },
+];
+
+const LOCATION_FACTORS = [
+  "School district quality","Walkability","Proximity to work","Community / culture fit",
+  "Access to nature/parks","Neighborhood safety","Public transit","Local dining/shopping",
+  "Religious community","Specific town/city","Distance from family",
+];
+
+const HOME_FACTORS = [
+  "Square footage","Bedroom count","Dedicated home office","At-home gym space",
+  "Outdoor/yard space","Garage","Open floor plan","Formal dining room",
+  "Basement","ADU / in-law potential","Hobby farm / animals","Workshop or studio",
+  "Pool or space for one","Accessibility features","Single-story layout",
+];
+
+const CONDITION_OPTIONS = [
+  { id:"turnkey", label:"Turnkey only", desc:"Move-in ready. No projects." },
+  { id:"cosmetic", label:"Cosmetic OK", desc:"Paint, flooring, finishes — fine. No structural work." },
+  { id:"livable", label:"Livable fixer", desc:"Functional day one, improve over time." },
+  { id:"full_rehab", label:"Full rehab", desc:"Comfortable with a major project if the bones are right." },
+];
+
+const COMMUNITY_TYPES = [
+  { id:"active_adult", title:"Active adult", desc:"55+ community, amenities, social programming, low maintenance." },
+  { id:"walkable_urban", title:"Walkable urban", desc:"Coffee, culture, transit, restaurants on foot." },
+  { id:"small_town", title:"Small town", desc:"Slower pace, local roots, knowing your neighbors." },
+  { id:"suburban_connected", title:"Suburban, connected", desc:"Good schools, commutable — the reliable setup." },
+  { id:"rural_land", title:"Rural / acreage", desc:"Space, privacy, land, quiet. Animals welcome." },
+  { id:"college_town", title:"College town", desc:"Arts, lectures, sports — energy without big-city cost." },
+  { id:"resort_recreation", title:"Recreation-focused", desc:"Near skiing, trails, water, or another outdoor anchor." },
+  { id:"international", title:"Open to international", desc:"Ex-pat, retirement abroad, or keeping it on the table." },
+];
+
+const LIFE_HORIZON_OPTS = [
+  { id:"forever", label:"Forever home", sub:"This is it" },
+  { id:"10yr", label:"10+ years", sub:"Then reassess" },
+  { id:"5_10", label:"5–10 years", sub:"Strategic step" },
+  { id:"under5", label:"Under 5", sub:"We'll move again" },
+];
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+function Chips({ options, selected, onChange, multi=true }) {
+  const toggle = v => {
+    if (!multi) { onChange(selected===v?"":v); return; }
+    onChange((selected||[]).includes(v)?selected.filter(x=>x!==v):[...(selected||[]),v]);
+  };
+  return (
+    <div className="chips">
+      {options.map(o=>{
+        const val=typeof o==="string"?o:o.id;
+        const lbl=typeof o==="string"?o:(o.label||o.title);
+        const isSel=multi?(selected||[]).includes(val):selected===val;
+        return <button key={val} className={`chip${isSel?" selected":""}`} onClick={()=>toggle(val)}>{lbl}</button>;
+      })}
+    </div>
+  );
+}
+
+function PriorityDots({ value=0, onChange, label }) {
+  return (
+    <div className="priority-item">
+      <span className="priority-item-label">{label}</span>
+      <div className="priority-dots">
+        {[1,2,3].map(n=>(
+          <div key={n} className={`dot d${n}${value>=n?" active":""}`}
+            onClick={()=>onChange(value===n?0:n)}
+            title={n===1?"Nice to have":n===2?"Important":"Must have"}/>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Main App ──────────────────────────────────────────────────────────────
+function App() {
+  const [path, setPath] = React.useState(null);         // selected path key
+  const [stageIdx, setStageIdx] = React.useState(0);    // index into path.stages
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState("");
+  const [aiOutput, setAiOutput] = React.useState(null);
+  const [localOutput, setLocalOutput] = React.useState(null);
+  const [localLoading, setLocalLoading] = React.useState(false);
+  const [copied, setCopied] = React.useState(false);
+  const outputRef = React.useRef(null);
+
+  // ── Form state ──
+  const [family, setFamily] = React.useState({
+    deciders:[
+      {id:1,name:"Partner A",role:"partner",topConcern:""},
+      {id:2,name:"Partner B",role:"partner",topConcern:""},
+    ],
+    kids:[],extendedInvolved:false,extendedNote:"",currentSituation:"renting",openToRenting:"",
+  });
+  const [urgency, setUrgency] = React.useState({drivers:[],timeline:"",additionalContext:""});
+  const [location, setLocation] = React.useState({targetAreas:"",flexOnLocation:"",factors:[],schoolDistrictPriority:0,walkabilityPriority:0,commuteMax:""});
+  const [home, setHome] = React.useState({minBeds:"",minBaths:"",budgetMin:"",budgetMax:"",factors:[],condition:"",mustHaveList:"",neverList:""});
+  const [risk, setRisk] = React.useState({
+    readiness:"", riskFactors:[], layoffConcern:"", relocationConcern:"", caregivingConcern:"",
+    financingConfidence:"", rentMakesSenseIf:"", isAdditionalProperty:"", incomeUse:"",
+    aduInterest:"", riskNotes:""
+  });
+  const [decisions, setDecisions] = React.useState({
+    decisionStyle:"", canListPerspectives:"", conversationsGetHeated:"", researchStyle:[],
+    acceptableRiskApproach:"", disagreementExample:"", decisionNotes:""
+  });
+  const [future, setFuture] = React.useState({
+    horizon:"",retirementWindow:"",communityTypes:[],agingInPlaceImportance:0,
+    kidsLeavingTimeline:"",wantToDownsize:"",openToRelocation:"",retirementConcerns:"",
+    partnerRetirementVisions:["",""],
+  });
+  const [partners, setPartners] = React.useState(()=>
+    [0,1].reduce((acc,i)=>{acc[i]={locationFactorPriorities:{},homeFactorPriorities:{},dealbreakers:"",flexibles:"",biggestFear:""};return acc;},{})
+  );
+
+  // ── Derived ──
+  const pathCfg = path ? PATHS[path] : null;
+  const stages = pathCfg ? pathCfg.stages : [];
+  const currentStage = stages[stageIdx] || "Analysis";
+  const isLastInput = stageIdx === stages.length - 2; // one before Analysis
+  const progress = stages.length > 1 ? (stageIdx / (stages.length - 1)) * 100 : 0;
+
+  // ── Helpers ──
+  const addKid=()=>setFamily(f=>({...f,kids:[...f.kids,{id:Date.now(),name:"",age:"",notes:""}]}));
+  const removeKid=id=>setFamily(f=>({...f,kids:f.kids.filter(k=>k.id!==id)}));
+  const updateKid=(id,field,val)=>setFamily(f=>({...f,kids:f.kids.map(k=>k.id===id?{...k,[field]:val}:k)}));
+  const updateDecider=(i,field,val)=>setFamily(f=>{const d=[...f.deciders];d[i]={...d[i],[field]:val};return{...f,deciders:d};});
+  const updatePartnerPriority=(pi,group,factor,val)=>{
+    setPartners(p=>({...p,[pi]:{...p[pi],[`${group}Priorities`]:{...p[pi][`${group}Priorities`],[factor]:val}}}));
+  };
+
+  const runLocalKnowledge = async (intake) => {
+    if (!location.targetAreas || location.targetAreas.trim().length < 3) return;
+    setLocalLoading(true);
+    const sys = `You are a hyper-local real estate and lifestyle intelligence engine. Surface practical, specific, honest local knowledge — what a well-connected local would say over coffee, not a brochure.
+
+Return ONLY valid JSON:
+{
+  "areaSnapshot": "2–3 sentences on character, who it attracts, what makes it distinct.",
+  "neighborhoodsToExplore": [{"name":"string","why":"specific reason matching THIS family's priorities"}],
+  "schoolDistrictNotes": "Honest take — ratings, standout programs, surprises. If not relevant, say so briefly.",
+  "lifestyleMatches": ["specific activity or amenity matching their interests"],
+  "thingsToKnowBeforeYouBuy": ["honest local insight — traffic, seasonal realities, HOA culture, hidden costs"],
+  "retirementAndLongTermFit": "How does this area hold up long-term? Walkability as they age, medical access, community programming, cost trajectory.",
+  "alternativeAreasToConsider": [{"name":"string","why":"why it might serve this family better"}]
+}
+Be specific. Name actual neighborhoods, schools, trails, quirks.`;
+    try {
+      const resp=await fetch((_CFG.apiEndpoint || "/.netlify/functions/analyze"),{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1500,system:sys,
+          messages:[{role:"user",content:`Target area: ${location.targetAreas}\nPath: ${pathCfg?.title}\nFamily profile:\n${JSON.stringify({location:intake.location,future:intake.future,home:intake.home},null,2)}`}]})});
+      const data=await resp.json();
+      const raw=data.content?.find(b=>b.type==="text")?.text||"";
+      if(raw){
+        const jsonStart=raw.indexOf("{");
+        const jsonEnd=raw.lastIndexOf("}");
+        if(jsonStart!==-1&&jsonEnd!==-1){
+          setLocalOutput(JSON.parse(raw.slice(jsonStart,jsonEnd+1)));
+        }
+      }
+    } catch(e){console.error("Local knowledge error:",e);}
+    setLocalLoading(false);
+  };
+
+  const runAnalysis = async () => {
+    setLoading(true); setError(""); setStageIdx(stages.length-1);
+    // Ensure deciders always has at least 2 entries for downstream safety
+    const safeDeciders = family.deciders.length >= 2
+      ? family.deciders
+      : [
+          {id:1,name:"Partner A",role:"partner",topConcern:""},
+          {id:2,name:"Partner B",role:"partner",topConcern:""},
+          ...family.deciders,
+        ].slice(0,2);
+
+    const intake = {
+      path: pathCfg?.title,
+      family:{decisionMakers:safeDeciders,children:family.kids,extendedFamilyInvolved:family.extendedInvolved,extendedNote:family.extendedNote,currentSituation:family.currentSituation,openToRenting:family.openToRenting},
+      urgency:{drivers:urgency.drivers,timeline:urgency.timeline,context:urgency.additionalContext},
+      location:{targetAreas:location.targetAreas,flexOnLocation:location.flexOnLocation,importantFactors:location.factors,schoolDistrictPriority:location.schoolDistrictPriority,walkabilityPriority:location.walkabilityPriority,commuteMax:location.commuteMax},
+      home:{minBeds:home.minBeds,minBaths:home.minBaths,budgetRange:`$${home.budgetMin}–$${home.budgetMax}`,importantFeatures:home.factors,conditionComfort:home.condition,mustHaves:home.mustHaveList,absoluteNos:home.neverList},
+      readiness:{overallReadiness:risk.readiness,riskFactors:risk.riskFactors,layoffConcern:risk.layoffConcern,relocationConcern:risk.relocationConcern,caregivingConcern:risk.caregivingConcern,financingConfidence:risk.financingConfidence,whenRentingMakesSense:risk.rentMakesSenseIf,isAdditionalProperty:risk.isAdditionalProperty,incomeUse:risk.incomeUse,aduOrRentalInterest:risk.aduInterest,notes:risk.riskNotes},
+      decisionMaking:{decisionStyle:decisions.decisionStyle,canListPerspectives:decisions.canListPerspectives,conversationsGetHeated:decisions.conversationsGetHeated,researchStyle:decisions.researchStyle,acceptableRiskApproach:decisions.acceptableRiskApproach,disagreementExample:decisions.disagreementExample,notes:decisions.decisionNotes},
+      future:{horizon:future.horizon,retirementWindow:future.retirementWindow,communityTypesWanted:future.communityTypes,agingInPlaceImportance:future.agingInPlaceImportance,kidsLeavingTimeline:future.kidsLeavingTimeline,wantToDownsize:future.wantToDownsize,openToRelocation:future.openToRelocation,retirementConcerns:future.retirementConcerns,partnerRetirementVisions:future.partnerRetirementVisions.map((v,i)=>({partner:safeDeciders[i]?.name||`Partner ${i+1}`,vision:v}))},
+      partnerPriorities:Object.entries(partners).map(([idx,p])=>({name:safeDeciders[idx]?.name||`Partner ${Number(idx)+1}`,locationPriorities:p.locationFactorPriorities,homePriorities:p.homeFactorPriorities,dealbreakers:p.dealbreakers,flexibles:p.flexibles,biggestFear:p.biggestFear})),
+    };
+    runLocalKnowledge(intake);
+    const sys=`You are a relationship systems consultant helping couples make major home purchase decisions. Path: "${pathCfg?.title}". Return ONLY a valid JSON object. No markdown, no explanation, just raw JSON starting with { and ending with }.
+
+Use this exact shape: {"execSummary":"2-3 sentences briefing a real estate agent","rentVsBuyVerdict":"direct buy/wait/depends, or empty string if retirement path","firmStances":[{"category":"","requirement":"","whyFirm":"","whoHoldsIt":""}],"flexibleZones":[{"category":"","factor":"","tradeoffNote":""}],"partnerAlignments":[{"factor":"","alignment":"strong","note":""}],"conflictsToResolve":[{"topic":"","description":"","suggestedConversation":""}],"futureHorizonAnalysis":[{"title":"","insight":"","tag":"consideration"}],"readinessAssessment":{"verdict":"ready / proceed-with-caution / not-yet / depends","summary":"2-3 sentences on whether they are positioned to pull the trigger, naming the biggest risk to plan around","watchItems":["specific risk to monitor or de-risk before or while buying"]},"decisionMakingGuidance":{"howTheyDecide":"1-2 sentences reflecting their decision style back to them","whenStuck":"a concrete suggested approach for when they look at this from very different perspectives, especially the love-the-house-but-it-has-problems situation"},"agentBrief":"1-2 paragraphs for the agent","keyQuestions":["","",""]}
+
+Rules: each string value under 60 words. Max 4 firmStances, 4 flexibleZones, 4 partnerAlignments, 2 conflictsToResolve, 3 futureHorizonAnalysis. Be direct. Name tensions. Tailor to the path. For readinessAssessment, weigh layoff, relocation, caregiving and financing risks honestly and say plainly when continuing to rent may be wiser. Max 3 watchItems. For decisionMakingGuidance, be practical and specific to how THIS couple described deciding together.`
+    try {
+      const resp=await fetch((_CFG.apiEndpoint || "/.netlify/functions/analyze"),{method:"POST",headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:2000,system:sys,
+          messages:[{role:"user",content:`Intake (${intake.path} path):\n${JSON.stringify(intake)}`}]})});
+      const data=await resp.json();
+      if(data.error){throw new Error(data.error.message||"API error");}
+      const raw=data.content?.find(b=>b.type==="text")?.text||"";
+      if(!raw){throw new Error("Empty response from AI");}
+      // Strip markdown fences and find the JSON object
+      const stripped=raw.replace(/```json[\s\S]*?```|```[\s\S]*?```/g,s=>s.slice(s.indexOf("{")));
+      const jsonStart=stripped.indexOf("{");
+      const jsonEnd=stripped.lastIndexOf("}");
+      if(jsonStart===-1||jsonEnd===-1){throw new Error("No JSON found in response");}
+      setAiOutput(JSON.parse(stripped.slice(jsonStart,jsonEnd+1)));
+    } catch(e){
+      console.error("Analysis error:",e);
+      setError(`Analysis failed: ${e.message}. Please try again.`);
+    }
+    setLoading(false);
+  };
+
+  const handleCopy=()=>{
+    if(!aiOutput) return;
+    const text=`HOME PURCHASE AGENT BRIEF\n${"─".repeat(50)}\n\n${aiOutput.agentBrief}\n\n`+
+      `FIRM STANCES\n${"─".repeat(30)}\n`+aiOutput.firmStances.map(s=>`• [${s.category}] ${s.requirement}\n  Why: ${s.whyFirm}`).join("\n")+
+      `\n\nFLEXIBLE ZONES\n${"─".repeat(30)}\n`+aiOutput.flexibleZones.map(z=>`• [${z.category}] ${z.factor} — ${z.tradeoffNote}`).join("\n")+
+      `\n\nREADINESS\n${"─".repeat(30)}\n`+(aiOutput.readinessAssessment?(`${aiOutput.readinessAssessment.verdict||""}\n${aiOutput.readinessAssessment.summary||""}`+(aiOutput.readinessAssessment.watchItems?.length?`\nWatch: ${aiOutput.readinessAssessment.watchItems.join("; ")}`:"")):"")+`\n\nHOW THEY DECIDE\n${"─".repeat(30)}\n`+(aiOutput.decisionMakingGuidance?(`${aiOutput.decisionMakingGuidance.howTheyDecide||""}\n${aiOutput.decisionMakingGuidance.whenStuck||""}`):"")+`\n\nKEY QUESTIONS\n${"─".repeat(30)}\n`+aiOutput.keyQuestions.map((q,i)=>`${i+1}. ${q}`).join("\n");
+    navigator.clipboard.writeText(text);
+    setCopied(true); setTimeout(()=>setCopied(false),2500);
+  };
+
+  // ── Path selection screen ──
+  if (!path) {
+    return (
+      <div className="app">
+        <style>{css}</style>
+        <div className="path-screen">
+          <div className="path-hero">
+            <div className="path-hero-label">{(_CFG.brandName || "The Papercut Effect") + " · " + (_CFG.toolSubtitle || "Home Purchase Tool")}</div>
+            <div className="path-hero-title">What life are you buying this home for?</div>
+            <div className="path-hero-sub">Not your life right now — the life this home needs to serve. Your kids might be 8 and 12 today, but if you're planning to move when they're grown, that's a completely different search than buying for them now. Pick the path that matches your <em style={{color:"rgba(248,243,236,0.8)"}}>intent</em>, not just your current situation.</div>
+          </div>
+          <div className="path-grid">
+            {Object.values(PATHS).map(p=>(
+              <div key={p.id} className={`path-card${path===p.id?" selected":""}`} onClick={()=>setPath(p.id)}>
+                <span className="path-card-icon">{p.icon}</span>
+                <div className="path-card-title">{p.title}</div>
+                <div className="path-card-sub">{p.subtitle}</div>
+                <div className="path-card-example">{p.example}</div>
+                <div className="path-card-stages">
+                  {p.stages.filter(s=>s!=="Analysis").map(s=>(
+                    <span key={s} className="path-stage-chip">{s}</span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          {path && (
+            <div className="path-cta">
+              <div className="path-hero-msg">{PATHS[path].heroQuestion}</div>
+              <button className="btn-primary" onClick={()=>setStageIdx(0)}>Start → {PATHS[path].title}</button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Stage renderer ──
+  const renderStage = () => {
+    const s = currentStage;
+    if (s==="Family") return <StageFamily family={family} setFamily={setFamily} addKid={addKid} removeKid={removeKid} updateKid={updateKid} updateDecider={updateDecider} pathCfg={pathCfg}/>;
+    if (s==="Urgency") return <StageUrgency urgency={urgency} setUrgency={setUrgency}/>;
+    if (s==="Location") return <StageLocation location={location} setLocation={setLocation} pathCfg={pathCfg}/>;
+    if (s==="Home") return <StageHome home={home} setHome={setHome} pathCfg={pathCfg}/>;
+    if (s==="Future") return <StageFuture future={future} setFuture={setFuture} family={family} pathCfg={pathCfg}/>;
+    if (s==="Risk") return <StageRisk risk={risk} setRisk={setRisk} pathCfg={pathCfg}/>;
+    if (s==="Decisions") return <StageDecisions decisions={decisions} setDecisions={setDecisions} family={family}/>;
+    if (s==="Partners") return <StagePartners partners={partners} family={family} updatePartnerPriority={updatePartnerPriority} setPartners={setPartners}/>;
+    if (s==="Analysis") return <StageOutput loading={loading} error={error} aiOutput={aiOutput} localOutput={localOutput} localLoading={localLoading} handleCopy={handleCopy} copied={copied} outputRef={outputRef} targetArea={location.targetAreas} onRetry={()=>{setError("");setLoading(false);runAnalysis();}}/>;
+  };
+
+  const isAnalysis = currentStage === "Analysis";
+
+  return (
+    <div className="app">
+      <style>{css}</style>
+      <div className="header">
+        <span className="header-title">{_CFG.brandName || "The Papercut Effect"}</span>
+        <span className="header-sub">{_CFG.toolSubtitle || "Home Purchase Tool"}</span>
+      </div>
+      <div className="progress-wrap"><div className="progress-bar" style={{width:`${progress}%`}}/></div>
+      <div className="stage-label">
+        <span>Step {stageIdx+1} of {stages.length} — {currentStage}</span>
+        <span className="stage-path-tag">{pathCfg.icon} {pathCfg.title}</span>
+      </div>
+      <div className="main">
+        {renderStage()}
+        {!isAnalysis && (
+          <div className="btn-row">
+            <button className="btn-ghost btn-row-left" onClick={()=>{setPath(null);setStageIdx(0);}}>← Change path</button>
+            {stageIdx>0 && <button className="btn-secondary" onClick={()=>setStageIdx(i=>i-1)}>Back</button>}
+            {!isLastInput && <button className="btn-primary" onClick={()=>setStageIdx(i=>i+1)}>Continue →</button>}
+            {isLastInput && <button className="btn-primary" onClick={runAnalysis}>Analyze with AI →</button>}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Stage: Family ─────────────────────────────────────────────────────────
+function StageFamily({family,setFamily,addKid,removeKid,updateKid,updateDecider,pathCfg}) {
+  const isRetirement = pathCfg.id==="retirement";
+  const isLaunching = pathCfg.id==="kids_launching";
+  const showKids = pathCfg.showKids;
+
+  return (
+    <>
+      <h1 className="section-title">Who's making this decision?</h1>
+      <p className="section-desc">Tell us about the people whose needs will shape this search.</p>
+
+      {isRetirement && (
+        <div className="path-callout">
+          <strong>Retirement path:</strong> We'll keep this focused on the two of you and any family considerations that affect where you land next.
+        </div>
+      )}
+      {isLaunching && (
+        <div className="path-callout">
+          <strong>Planning ahead:</strong> Tell us about your kids as they are today — we'll use their ages to understand your timeline, not to drive school district questions. This home is for the life you're moving <em>toward</em>.
+        </div>
+      )}
+
+      <div className="card">
+        <div className="card-label">Decision Makers</div>
+        {family.deciders.map((d,i)=>(
+          <div className="member-card" key={d.id}>
+            <div className="member-header"><span className="member-name">{d.name||`Partner ${i+1}`}</span></div>
+            <div className="row2">
+              <div><label>Name</label><input type="text" value={d.name} onChange={e=>updateDecider(i,"name",e.target.value)} placeholder="Sam, Partner A…"/></div>
+              <div><label>Role</label>
+                <select value={d.role} onChange={e=>updateDecider(i,"role",e.target.value)}>
+                  <option value="partner">Partner / Spouse</option>
+                  <option value="primary">Primary decision maker</option>
+                  <option value="co">Co-decision maker</option>
+                  <option value="extended">Extended family (finances involved)</option>
+                </select>
+              </div>
+            </div>
+            <div style={{marginTop:12}}>
+              <label>{isRetirement?"What does retirement in this next home look like for you?":"Top personal priority for this move"}</label>
+              <input type="text" value={d.topConcern} onChange={e=>updateDecider(i,"topConcern",e.target.value)}
+                placeholder={isRetirement?"e.g. being closer to grandkids, a quieter pace, access to hiking…":"e.g. closer to work, more space, better schools…"}/>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {showKids && (
+        <div className="card">
+          <div className="card-label">{isLaunching?"Your kids today (for timeline context)":"Children"}</div>
+          {isLaunching && (
+            <p className="hint">Tell us their ages so we can factor in your timeline. We won't ask about schools or activities — this home is for after they've launched.</p>
+          )}
+          {family.kids.map(k=>(
+            <div className="member-card" key={k.id}>
+              <div className="member-header">
+                <span className="member-name">{k.name||"Child"}</span>
+                <button className="remove-btn" onClick={()=>removeKid(k.id)}>×</button>
+              </div>
+              <div className="row3">
+                <div><label>Name</label><input type="text" value={k.name} onChange={e=>updateKid(k.id,"name",e.target.value)} placeholder="Nickname ok"/></div>
+                <div><label>{pathCfg.id==="kids_soon"?"Current / expected age":"Age"}</label><input type="number" value={k.age} onChange={e=>updateKid(k.id,"age",e.target.value)} min={0} max={25}/></div>
+                <div><label>Key need</label><input type="text" value={k.notes} onChange={e=>updateKid(k.id,"notes",e.target.value)} placeholder={pathCfg.id==="kids_soon"?"e.g. need a room by 2026":"IEP, sports, friends…"}/></div>
+              </div>
+            </div>
+          ))}
+          <button className="add-btn" onClick={addKid}>+ Add {pathCfg.id==="kids_soon"?"a planned child":"a child"}</button>
+        </div>
+      )}
+
+      <div className="card">
+        <div className="card-label">Context</div>
+        {!isRetirement && (
+          <div style={{marginBottom:16}}>
+            <label>Does extended family have a stake in this decision?</label>
+            <p className="hint">Financial support, proximity needs, multigenerational living, caregiving.</p>
+            <Chips options={[{id:"yes",label:"Yes"},{id:"no",label:"No"}]} selected={family.extendedInvolved?"yes":"no"} onChange={v=>setFamily(f=>({...f,extendedInvolved:v==="yes"}))} multi={false}/>
+            {family.extendedInvolved&&<div style={{marginTop:10}}><textarea value={family.extendedNote} onChange={e=>setFamily(f=>({...f,extendedNote:e.target.value}))} placeholder="Describe their involvement…"/></div>}
+          </div>
+        )}
+        {isRetirement && (
+          <div style={{marginBottom:16}}>
+            <label>Are kids or grandkids a factor in where you land?</label>
+            <p className="hint">Proximity to grandkids, eventual multigenerational living, wanting to be near family.</p>
+            <textarea value={family.extendedNote} onChange={e=>setFamily(f=>({...f,extendedNote:e.target.value}))} placeholder="e.g. grandkids are in Denver so we want to be within a day's drive…"/>
+          </div>
+        )}
+        {!isRetirement && (
+          <>
+            <div style={{marginBottom:16}}>
+              <label>Current living situation</label>
+              <Chips options={[{id:"renting",label:"Renting"},{id:"own",label:"Owning (selling)"},{id:"parents",label:"With family"},{id:"other",label:"Other"}]} selected={family.currentSituation} onChange={v=>setFamily(f=>({...f,currentSituation:v}))} multi={false}/>
+            </div>
+            <div>
+              <label>Is continuing to rent genuinely on the table?</label>
+              <p className="hint">No wrong answer — helps us assess real urgency.</p>
+              <Chips options={[{id:"yes",label:"Yes, absolutely"},{id:"maybe",label:"Maybe, if the right house doesn't appear"},{id:"no",label:"No — we're buying"}]} selected={family.openToRenting} onChange={v=>setFamily(f=>({...f,openToRenting:v}))} multi={false}/>
+            </div>
+          </>
+        )}
+      </div>
+    </>
+  );
+}
+
+// ── Stage: Urgency ────────────────────────────────────────────────────────
+function StageUrgency({urgency,setUrgency}) {
+  return (
+    <>
+      <h1 className="section-title">What's driving the timing?</h1>
+      <p className="section-desc">Understanding the urgency — or lack of it — changes how you should approach this search.</p>
+      <div className="card">
+        <div className="card-label">What's pushing this forward?</div>
+        <p className="hint">Select all that apply.</p>
+        <div className="urgency-cards">
+          {URGENCY_OPTIONS.map(o=>(
+            <div key={o.id} className={`ugcard${urgency.drivers.includes(o.id)?" selected":""}`}
+              onClick={()=>setUrgency(u=>({...u,drivers:u.drivers.includes(o.id)?u.drivers.filter(d=>d!==o.id):[...u.drivers,o.id]}))}>
+              <div className="ugcard-title">{o.title}</div>
+              <div className="ugcard-desc">{o.desc}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+      <div className="card">
+        <div className="card-label">Timeline</div>
+        <label>Ideal timeline to be in a new home</label>
+        <select value={urgency.timeline} onChange={e=>setUrgency(u=>({...u,timeline:e.target.value}))}>
+          <option value="">Select…</option>
+          <option value="asap">ASAP / under 60 days</option>
+          <option value="3mo">Within 3 months</option>
+          <option value="6mo">3–6 months</option>
+          <option value="1yr">6–12 months</option>
+          <option value="flexible">Flexible — right house over right timeline</option>
+        </select>
+        <div style={{marginTop:16}}>
+          <label>Anything else about timing we should know?</label>
+          <textarea value={urgency.additionalContext} onChange={e=>setUrgency(u=>({...u,additionalContext:e.target.value}))} placeholder="Lease expiration, school deadlines, job start dates, financial windows…"/>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ── Stage: Location ───────────────────────────────────────────────────────
+function StageLocation({location,setLocation,pathCfg}) {
+  const update=(field,val)=>setLocation(l=>({...l,[field]:val}));
+  const isRetirement = pathCfg.id==="retirement";
+  return (
+    <>
+      <h1 className="section-title">{isRetirement?"Where do you want to land?":"Where do you want to be?"}</h1>
+      <p className="section-desc">
+        {isRetirement
+          ? "This is often the most important question in retirement planning. Let's figure out how clear your picture is."
+          : "Location is often the biggest constraint — or the biggest variable. Let's figure out how firm yours is."}
+      </p>
+      {isRetirement && (
+        <div className="path-callout">
+          <strong>Tip:</strong> If you don't have a target area yet, describe what you're looking for — climate, region, community type — and we'll factor that into the local intelligence.
+        </div>
+      )}
+      <div className="card">
+        <div className="card-label">Geography</div>
+        <div style={{marginBottom:14}}>
+          <label>Target area(s) or neighborhoods</label>
+          <p className="hint">Be specific where you can — we'll use this to pull local intelligence.</p>
+          <input type="text" value={location.targetAreas} onChange={e=>update("targetAreas",e.target.value)} placeholder={isRetirement?"e.g. Asheville NC, coastal Maine, Pacific Northwest, Tucson AZ…":"e.g. Kirkland WA, East Seattle suburbs, Bozeman MT…"}/>
+        </div>
+        <div>
+          <label>How flexible are you on location?</label>
+          <Chips options={[{id:"firm",label:"Very firm — specific area only"},{id:"regional",label:"Open within a region"},{id:"open",label:"Open — lifestyle over zip code"}]} selected={location.flexOnLocation} onChange={v=>update("flexOnLocation",v)} multi={false}/>
+        </div>
+      </div>
+      <div className="card">
+        <div className="card-label">What matters about where you live?</div>
+        <p className="hint">Select every factor that genuinely matters.</p>
+        <Chips options={LOCATION_FACTORS.filter(f=>pathCfg.showSchools||f!=="School district quality")} selected={location.factors} onChange={v=>update("factors",v)}/>
+      </div>
+      <div className="card">
+        <div className="card-label">Details</div>
+        {pathCfg.showSchools && (
+          <div style={{marginBottom:20}}>
+            <label>School district quality</label>
+            <div className="slider-row"><input type="range" min={0} max={5} value={location.schoolDistrictPriority} onChange={e=>update("schoolDistrictPriority",Number(e.target.value))}/><span className="slider-val">{location.schoolDistrictPriority===0?"N/A":location.schoolDistrictPriority}</span></div>
+            <div className="slider-label-row"><span>Not a factor</span><span>Dealbreaker</span></div>
+          </div>
+        )}
+        <div style={{marginBottom:20}}>
+          <label>Walkability</label>
+          <div className="slider-row"><input type="range" min={0} max={5} value={location.walkabilityPriority} onChange={e=>update("walkabilityPriority",Number(e.target.value))}/><span className="slider-val">{location.walkabilityPriority===0?"N/A":location.walkabilityPriority}</span></div>
+          <div className="slider-label-row"><span>Don't care</span><span>Essential</span></div>
+        </div>
+        {!isRetirement && (
+          <div>
+            <label>Maximum acceptable commute (one way)</label>
+            <select value={location.commuteMax} onChange={e=>update("commuteMax",e.target.value)}>
+              <option value="">Select…</option>
+              <option value="wfh">Fully remote — commute irrelevant</option>
+              <option value="15">Under 15 minutes</option>
+              <option value="30">Under 30 minutes</option>
+              <option value="45">Up to 45 minutes</option>
+              <option value="60">Up to an hour</option>
+              <option value="hybrid">Hybrid — some days don't matter</option>
+            </select>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+// ── Stage: Home ───────────────────────────────────────────────────────────
+function StageHome({home,setHome,pathCfg}) {
+  const update=(field,val)=>setHome(h=>({...h,[field]:val}));
+  const isRetirement = pathCfg.id==="retirement";
+  return (
+    <>
+      <h1 className="section-title">What does the home need to do?</h1>
+      <p className="section-desc">
+        {isRetirement
+          ? "Think about the life you're designing — not just the house specs. What does this home need to enable?"
+          : "Think about how your family actually lives — not just how many bedrooms you need on paper."}
+      </p>
+      {isRetirement && (
+        <div className="path-callout">
+          <strong>Retirement lens:</strong> Think about maintenance load, single-story access, proximity to amenities, and whether you want to host family. The features that matter in your 60s and 70s may be different from what you'd have prioritized at 40.
+        </div>
+      )}
+      <div className="card">
+        <div className="card-label">The basics</div>
+        <div className="row3" style={{marginBottom:14}}>
+          <div><label>Min bedrooms</label><input type="number" value={home.minBeds} onChange={e=>update("minBeds",e.target.value)} placeholder="e.g. 2" min={1}/></div>
+          <div><label>Min bathrooms</label><input type="number" value={home.minBaths} onChange={e=>update("minBaths",e.target.value)} placeholder="e.g. 2" min={1}/></div>
+        </div>
+        <div className="row2">
+          <div><label>Budget floor ($)</label><input type="text" value={home.budgetMin} onChange={e=>update("budgetMin",e.target.value)} placeholder="e.g. 400,000"/></div>
+          <div><label>Budget ceiling ($)</label><input type="text" value={home.budgetMax} onChange={e=>update("budgetMax",e.target.value)} placeholder="e.g. 700,000"/></div>
+        </div>
+      </div>
+      <div className="card">
+        <div className="card-label">What spaces and features matter?</div>
+        <Chips options={HOME_FACTORS} selected={home.factors} onChange={v=>update("factors",v)}/>
+      </div>
+      <div className="card">
+        <div className="card-label">Condition comfort</div>
+        <p className="hint">{isRetirement?"Be honest about how much of a project you want to take on at this stage.":"Be honest about your bandwidth for projects."}</p>
+        <Chips options={CONDITION_OPTIONS.map(o=>o.id)} selected={home.condition} onChange={v=>update("condition",v)} multi={false}/>
+        {CONDITION_OPTIONS.map(o=><div key={o.id} style={{fontSize:12,color:C.mutedText,marginTop:4}}>{home.condition===o.id&&`→ ${o.desc}`}</div>)}
+      </div>
+      <div className="card">
+        <div className="card-label">Hard limits</div>
+        <div style={{marginBottom:14}}>
+          <label>Absolute must-haves</label>
+          <textarea value={home.mustHaveList} onChange={e=>update("mustHaveList",e.target.value)} placeholder={isRetirement?"e.g. single story, no HOA, large guest room, low-maintenance yard, attached garage…":"e.g. half-acre minimum, attached garage, office on main floor…"}/>
+        </div>
+        <div>
+          <label>Absolute deal-breakers</label>
+          <textarea value={home.neverList} onChange={e=>update("neverList",e.target.value)} placeholder="e.g. HOA, busy road, no yard, flood zone, stairs only…"/>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ── Stage: Future ─────────────────────────────────────────────────────────
+function StageFuture({future,setFuture,family,pathCfg}) {
+  const update=(field,val)=>setFuture(f=>({...f,[field]:val}));
+  const updateVision=(i,val)=>setFuture(f=>{const v=[...f.partnerRetirementVisions];v[i]=val;return{...f,partnerRetirementVisions:v};});
+  const isRetirement=pathCfg.id==="retirement";
+  const isNoKids=pathCfg.id==="no_kids";
+  const showFullRetirement=pathCfg.showFutureRetirement||isRetirement;
+  const showLite=pathCfg.showFutureLite;
+
+  const RETIREMENT_WINDOWS=[
+    {id:"already",label:"Already retired"},{id:"5yr",label:"Within 5 years"},
+    {id:"10yr",label:"5–10 years out"},{id:"15yr",label:"10–15 years out"},
+    {id:"20yr",label:"15–20+ years out"},{id:"notthinking",label:"Not thinking about it yet"},
+  ];
+
+  return (
+    <>
+      <h1 className="section-title">{isRetirement?"Let's get specific about the next chapter.":"Where is this chapter taking you?"}</h1>
+      <p className="section-desc">
+        {isRetirement
+          ? "The more specific you can be about what you want your daily life to feel like, the better we can match you to the right place."
+          : "A home purchase isn't just about where you are now — it's about whether this house and place can grow with you."}
+      </p>
+
+      {!isRetirement && (
+        <div className="card">
+          <div className="card-label">How long do you plan to stay?</div>
+          <div className="tl-bar">
+            {LIFE_HORIZON_OPTS.map(o=>(
+              <div key={o.id} className={`tl-seg${future.horizon===o.id?" active":""}`} onClick={()=>update("horizon",o.id)}>
+                <div className="tl-seg-label">{o.label}</div>
+                <div className="tl-seg-sub">{o.sub}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {showFullRetirement && (
+        <div className="card">
+          <div className="card-label">{isRetirement?"Where are you in the retirement timeline?":"Retirement horizon"}</div>
+          <label>{isRetirement?"How close is retirement for your household?":"How far out is retirement?"}</label>
+          <p className="hint">Ballpark is enough.</p>
+          <Chips options={RETIREMENT_WINDOWS} selected={future.retirementWindow} onChange={v=>update("retirementWindow",v)} multi={false}/>
+        </div>
+      )}
+
+      <div className="card">
+        <div className="card-label">{isRetirement?"What kind of community are you looking for?":"What kind of community would you want long-term?"}</div>
+        <p className="hint">{isRetirement?"Select all that genuinely resonate. Be honest — not aspirational.":"Select all that resonate — even as an aspiration."}</p>
+        <div className="horizon-cards">
+          {COMMUNITY_TYPES.map(o=>(
+            <div key={o.id} className={`hcard${future.communityTypes.includes(o.id)?" selected":""}`}
+              onClick={()=>update("communityTypes",future.communityTypes.includes(o.id)?future.communityTypes.filter(x=>x!==o.id):[...future.communityTypes,o.id])}>
+              <div className="hcard-title">{o.title}</div>
+              <div className="hcard-desc">{o.desc}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-label">Aging in place & adaptability</div>
+        <div style={{marginBottom:18}}>
+          <label>How important is it that this home works as you age?</label>
+          <p className="hint">Single-story, step-free entry, wide doorways, proximity to medical care, low-maintenance yard.</p>
+          <div className="slider-row">
+            <input type="range" min={0} max={5} value={future.agingInPlaceImportance} onChange={e=>update("agingInPlaceImportance",Number(e.target.value))}/>
+            <span className="slider-val">{future.agingInPlaceImportance===0?"N/A":future.agingInPlaceImportance}</span>
+          </div>
+          <div className="slider-label-row"><span>Not a factor right now</span><span>Must work long-term</span></div>
+        </div>
+        {(isNoKids||isRetirement) && family.kids.length===0 && (
+          <div style={{marginBottom:16}}>
+            <label>Will kids or grandkids visit regularly?</label>
+            <p className="hint">This affects space planning — guest rooms, bunk rooms, yard.</p>
+            <Chips options={[{id:"yes",label:"Yes, regularly"},{id:"occasionally",label:"Occasionally"},{id:"rarely",label:"Rarely / never"}]} selected={future.kidsLeavingTimeline} onChange={v=>update("kidsLeavingTimeline",v)} multi={false}/>
+          </div>
+        )}
+        {pathCfg.showKids && family.kids.length>0 && (
+          <div style={{marginBottom:16}}>
+            <label>When will your kids be out of the house?</label>
+            <select value={future.kidsLeavingTimeline} onChange={e=>update("kidsLeavingTimeline",e.target.value)}>
+              <option value="">Select…</option>
+              <option value="already">Already launched</option>
+              <option value="5yr">Within 5 years</option>
+              <option value="5_10">5–10 years</option>
+              <option value="10plus">10+ years</option>
+            </select>
+          </div>
+        )}
+        <div style={{marginBottom:16}}>
+          <label>{isRetirement?"Are you open to downsizing from your current home?":"Do you expect to downsize eventually?"}</label>
+          <Chips options={[{id:"yes",label:"Yes, likely"},{id:"maybe",label:"Maybe"},{id:"no",label:"No — this could be our last move"},{id:"unknown",label:"Genuinely don't know"}]} selected={future.wantToDownsize} onChange={v=>update("wantToDownsize",v)} multi={false}/>
+        </div>
+        {!isRetirement && (
+          <div>
+            <label>Open to relocating for retirement?</label>
+            <p className="hint">Different climate, lower cost of living, closer to grandkids, international.</p>
+            <Chips options={[{id:"yes",label:"Yes, actively thinking about it"},{id:"maybe",label:"Maybe — keeping options open"},{id:"no",label:"No — staying in this region"}]} selected={future.openToRelocation} onChange={v=>update("openToRelocation",v)} multi={false}/>
+          </div>
+        )}
+      </div>
+
+      <div className="card">
+        <div className="card-label">{isRetirement?"What does your ideal retirement life actually look like?":"Individual visions"}</div>
+        <p className="hint">Partners sometimes surprise each other here. Answer independently — don't compare notes yet.</p>
+        {family.deciders.map((d,i)=>(
+          <div key={d.id} style={{marginBottom:16}}>
+            <label>{d.name||`Partner ${i+1}`}: {isRetirement?"Describe your ideal day / week in this next chapter.":"What does your ideal retirement life look like?"}</label>
+            <textarea value={future.partnerRetirementVisions[i]||""} onChange={e=>updateVision(i,e.target.value)} placeholder="Where are you? What does a Tuesday look like? Active, traveling, near family, in a community, slow mornings, abroad?"/>
+          </div>
+        ))}
+        <div>
+          <label>{isRetirement?"Any fears or concerns about this transition?":"Any fears about the retirement chapter?"}</label>
+          <p className="hint">Financial, health, isolation, losing identity, partner disagreement — all fair game.</p>
+          <textarea value={future.retirementConcerns} onChange={e=>update("retirementConcerns",e.target.value)} placeholder="What keeps you up at night about this phase of life?"/>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ── Stage: Partners ───────────────────────────────────────────────────────
+const RISK_FACTORS = [
+  {id:"layoff", title:"Job loss / layoff risk", desc:"One of us is in a volatile industry or role"},
+  {id:"relocation", title:"Possible relocation", desc:"A move for work or family could come in 3-5 years"},
+  {id:"health", title:"Health concerns", desc:"A current or likely health issue could affect us"},
+  {id:"aging_parents", title:"Caring for aging parents", desc:"We may need to support or house parents down the road"},
+  {id:"financing", title:"Financing uncertainty", desc:"Our approval, rate, or down payment isn't fully locked"},
+  {id:"income_change", title:"Income change ahead", desc:"A raise, leave, business change, or one of us pausing work"},
+  {id:"none", title:"None we can think of", desc:"We feel stable on all fronts right now"},
+];
+
+function StageRisk({risk, setRisk, pathCfg}) {
+  const set=(k,v)=>setRisk(r=>({...r,[k]:v}));
+  const toggle=(id)=>setRisk(r=>({...r,riskFactors:r.riskFactors.includes(id)?r.riskFactors.filter(x=>x!==id):[...r.riskFactors,id]}));
+  return (
+    <>
+      <h1 className="section-title">Are you actually ready to pull the trigger?</h1>
+      <p className="section-desc">Falling in love with a house is easy. This section is the honest gut-check most people skip — the life stuff that can make even a perfect home the wrong move right now. Better to surface it here than three months into a mortgage.</p>
+
+      <div className="card">
+        <div className="card-label">Overall, how ready do you feel?</div>
+        <Chips multi={false}
+          options={[
+            {id:"ready",label:"Ready — let's go"},
+            {id:"mostly",label:"Mostly, a few unknowns"},
+            {id:"testing",label:"Testing the waters"},
+            {id:"unsure",label:"Honestly not sure"},
+          ]}
+          selected={risk.readiness} onChange={v=>set("readiness",v)}/>
+      </div>
+
+      <div className="card">
+        <div className="card-label">What could change in the next 3-5 years?</div>
+        <p className="hint">Select anything that could realistically become a factor — even if it feels unlikely. Naming it now means you can plan around it.</p>
+        <div className="urgency-cards">
+          {RISK_FACTORS.map(o=>(
+            <div key={o.id} className={`ugcard${risk.riskFactors.includes(o.id)?" selected":""}`} onClick={()=>toggle(o.id)}>
+              <div className="ugcard-title">{o.title}</div>
+              <div className="ugcard-desc">{o.desc}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {risk.riskFactors.includes("layoff") && (
+        <div className="card">
+          <label>If income dropped suddenly, how long could you cover the mortgage?</label>
+          <Chips multi={false}
+            options={[{id:"under3",label:"Under 3 months"},{id:"3to6",label:"3-6 months"},{id:"6to12",label:"6-12 months"},{id:"over12",label:"Over a year"}]}
+            selected={risk.layoffConcern} onChange={v=>set("layoffConcern",v)}/>
+        </div>
+      )}
+
+      {risk.riskFactors.includes("relocation") && (
+        <div className="card">
+          <label>How would a relocation affect this purchase?</label>
+          <Chips multi={false}
+            options={[{id:"dealbreaker",label:"We'd have to sell / it'd be a problem"},{id:"rentable",label:"We'd rent it out"},{id:"fine",label:"We'd keep it as a base"},{id:"unsure",label:"Haven't thought it through"}]}
+            selected={risk.relocationConcern} onChange={v=>set("relocationConcern",v)}/>
+        </div>
+      )}
+
+      {(risk.riskFactors.includes("aging_parents")||risk.riskFactors.includes("health")) && (
+        <div className="card">
+          <label>Could you need space or accessibility for caregiving (parents or your own health)?</label>
+          <Chips multi={false}
+            options={[{id:"likely",label:"Likely — we should plan for it"},{id:"possible",label:"Possible — keep it in mind"},{id:"no",label:"Not a factor"}]}
+            selected={risk.caregivingConcern} onChange={v=>set("caregivingConcern",v)}/>
+          <p className="hint">If yes, things like a main-floor bedroom, a future in-law suite, or single-level living are worth weighing now.</p>
+        </div>
+      )}
+
+      <div className="card">
+        <div className="card-label">Financing confidence</div>
+        <label>How locked-in is your financing?</label>
+        <Chips multi={false}
+          options={[{id:"preapproved",label:"Pre-approved, solid"},{id:"likely",label:"Likely fine, not finalized"},{id:"shaky",label:"Some question marks"},{id:"notstarted",label:"Haven't really started"}]}
+          selected={risk.financingConfidence} onChange={v=>set("financingConfidence",v)}/>
+        <label style={{marginTop:"14px"}}>When would continuing to rent actually make more sense for you?</label>
+        <p className="hint">Worth saying out loud — there's no shame in "not yet." What would have to be true for renting to be the smarter call?</p>
+        <textarea rows={2} value={risk.rentMakesSenseIf} onChange={e=>set("rentMakesSenseIf",e.target.value)} placeholder="e.g. If we can't get 6 months of reserves, or if the relocation question isn't settled by spring..."/>
+      </div>
+
+      <div className="card">
+        <div className="card-label">Is this an additional property?</div>
+        <label>Is this a second home or investment, rather than your primary residence?</label>
+        <Chips multi={false}
+          options={[{id:"primary",label:"No — primary home"},{id:"second",label:"Second home"},{id:"investment",label:"Investment / income"}]}
+          selected={risk.isAdditionalProperty} onChange={v=>set("isAdditionalProperty",v)}/>
+        {(risk.isAdditionalProperty==="second"||risk.isAdditionalProperty==="investment") && (
+          <>
+            <label style={{marginTop:"14px"}}>How will it be used for income?</label>
+            <Chips multi={false}
+              options={[{id:"longterm",label:"Long-term rental"},{id:"shortterm",label:"Short-term / vacation rental"},{id:"mixed",label:"Mix of personal + rental"},{id:"none",label:"Not for income"}]}
+              selected={risk.incomeUse} onChange={v=>set("incomeUse",v)}/>
+          </>
+        )}
+        <label style={{marginTop:"14px"}}>Interested in an ADU or rental potential to help offset the mortgage?</label>
+        <p className="hint">An accessory dwelling unit (basement apartment, garage conversion, casita) can turn part of your home into income — or future space for family.</p>
+        <Chips multi={false}
+          options={[{id:"yes",label:"Yes — that's appealing"},{id:"maybe",label:"Maybe, tell me more"},{id:"no",label:"No interest"}]}
+          selected={risk.aduInterest} onChange={v=>set("aduInterest",v)}/>
+      </div>
+
+      <div className="card">
+        <div className="card-label">Anything else on your mind?</div>
+        <textarea rows={2} value={risk.riskNotes} onChange={e=>set("riskNotes",e.target.value)} placeholder="Any other worry, what-if, or hesitation worth naming..."/>
+      </div>
+    </>
+  );
+}
+
+const RESEARCH_STYLES = [
+  {id:"spreadsheet", title:"We make spreadsheets", desc:"Lay it all out, compare side by side"},
+  {id:"experts", title:"We talk to experts", desc:"Inspectors, agents, contractors, advisors"},
+  {id:"gut", title:"We trust our gut", desc:"If it feels right, we move"},
+  {id:"deepdive", title:"One of us deep-dives", desc:"Someone goes down the research rabbit hole"},
+  {id:"sleep", title:"We sleep on it", desc:"Time and distance before deciding"},
+  {id:"crowdsource", title:"We ask our people", desc:"Friends, family, online communities"},
+];
+
+function StageDecisions({decisions, setDecisions, family}) {
+  const set=(k,v)=>setDecisions(d=>({...d,[k]:v}));
+  const toggle=(id)=>setDecisions(d=>({...d,researchStyle:d.researchStyle.includes(id)?d.researchStyle.filter(x=>x!==id):[...d.researchStyle,id]}));
+  return (
+    <>
+      <h1 className="section-title">How do the two of you actually decide?</h1>
+      <p className="section-desc">A house is one of the biggest joint decisions you'll make — and you won't always see it the same way. This isn't about the house yet. It's about <em>how you two get to "yes"</em> when you're starting from different places.</p>
+
+      <div className="card">
+        <div className="card-label">When you see something differently, how do you usually get to a decision?</div>
+        <Chips multi={false}
+          options={[
+            {id:"talk",label:"We talk it through till we land"},
+            {id:"defer",label:"One of us usually defers"},
+            {id:"avoid",label:"We tend to avoid / stall"},
+            {id:"compromise",label:"We split the difference"},
+            {id:"data",label:"Whoever has the better case wins"},
+          ]}
+          selected={decisions.decisionStyle} onChange={v=>set("decisionStyle",v)}/>
+      </div>
+
+      <div className="card">
+        <div className="card-label">Can you sit down and list out each other's perspectives?</div>
+        <p className="hint">Being able to state the other person's view fairly — even when you disagree — is one of the strongest predictors that you'll navigate this well.</p>
+        <Chips multi={false}
+          options={[{id:"easily",label:"Yes, pretty easily"},{id:"withwork",label:"With some effort"},{id:"hard",label:"Honestly, that's hard for us"}]}
+          selected={decisions.canListPerspectives} onChange={v=>set("canListPerspectives",v)}/>
+      </div>
+
+      <div className="card">
+        <div className="card-label">Do these conversations get heated?</div>
+        <Chips multi={false}
+          options={[{id:"rarely",label:"Rarely — we stay calm"},{id:"sometimes",label:"Sometimes"},{id:"often",label:"Often — it's a sore spot"}]}
+          selected={decisions.conversationsGetHeated} onChange={v=>set("conversationsGetHeated",v)}/>
+        <p className="hint">No wrong answer. Knowing this upfront helps you set up the search to protect your relationship, not just find a house.</p>
+      </div>
+
+      <div className="card">
+        <div className="card-label">How do you learn and get context before deciding?</div>
+        <p className="hint">Select all that sound like you.</p>
+        <div className="urgency-cards">
+          {RESEARCH_STYLES.map(o=>(
+            <div key={o.id} className={`ugcard${decisions.researchStyle.includes(o.id)?" selected":""}`} onClick={()=>toggle(o.id)}>
+              <div className="ugcard-title">{o.title}</div>
+              <div className="ugcard-desc">{o.desc}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-label">The "love it but it has problems" test</div>
+        <label>Say you find a home you both love, in a location you love — but it has real issues (an old roof, foundation questions, a busy road). How do you decide whether that's acceptable risk?</label>
+        <p className="hint">There's no right answer. The point is knowing your instinct now, before emotion is in the driver's seat at an open house.</p>
+        <Chips multi={false}
+          options={[
+            {id:"walk",label:"Serious issues = we walk"},
+            {id:"price",label:"Depends on price / negotiation"},
+            {id:"experts",label:"We'd get experts to quantify it"},
+            {id:"heart",label:"If we love it, we'd find a way"},
+          ]}
+          selected={decisions.acceptableRiskApproach} onChange={v=>set("acceptableRiskApproach",v)}/>
+        <textarea style={{marginTop:"12px"}} rows={2} value={decisions.disagreementExample} onChange={e=>set("disagreementExample",e.target.value)} placeholder="Optional: a time you two disagreed on something big and how you worked it out..."/>
+      </div>
+
+      <div className="card">
+        <div className="card-label">Anything else about how you decide together?</div>
+        <textarea rows={2} value={decisions.decisionNotes} onChange={e=>set("decisionNotes",e.target.value)} placeholder="What helps you two reach a good decision? What gets in the way?"/>
+      </div>
+    </>
+  );
+}
+
+
+function StagePartners({partners,family,updatePartnerPriority,setPartners}) {
+  return (
+    <>
+      <h1 className="section-title">Where do each of you stand?</h1>
+      <p className="section-desc">This is where we find the alignment — and the tension. Answer honestly. The output is only useful if it reflects what's actually true.</p>
+      {family.deciders.map((d,i)=>(
+        <div key={d.id} className="card" style={{marginBottom:28}}>
+          <div className="card-label">{d.name||`Partner ${i+1}`}</div>
+          <div style={{marginBottom:18}}>
+            <label>Location priorities <span style={{fontSize:12,color:C.mutedText,fontWeight:400}}>(dots: 1 = nice to have · 3 = must have)</span></label>
+            <div className="priority-grid">
+              {LOCATION_FACTORS.slice(0,8).map(f=>(
+                <PriorityDots key={f} label={f} value={partners[i]?.locationFactorPriorities?.[f]||0} onChange={v=>updatePartnerPriority(i,"locationFactor",f,v)}/>
+              ))}
+            </div>
+          </div>
+          <div style={{marginBottom:18}}>
+            <label>Home feature priorities</label>
+            <div className="priority-grid">
+              {HOME_FACTORS.slice(0,8).map(f=>(
+                <PriorityDots key={f} label={f} value={partners[i]?.homeFactorPriorities?.[f]||0} onChange={v=>updatePartnerPriority(i,"homeFactor",f,v)}/>
+              ))}
+            </div>
+          </div>
+          <div className="row2" style={{marginTop:4}}>
+            <div>
+              <label>My personal dealbreaker(s)</label>
+              <p className="hint">What would make you walk away from an otherwise good house?</p>
+              <textarea value={partners[i]?.dealbreakers||""} onChange={e=>setPartners(p=>({...p,[i]:{...p[i],dealbreakers:e.target.value}}))} placeholder="Be specific…"/>
+            </div>
+            <div>
+              <label>What I'm willing to flex on</label>
+              <textarea value={partners[i]?.flexibles||""} onChange={e=>setPartners(p=>({...p,[i]:{...p[i],flexibles:e.target.value}}))} placeholder="What are you willing to give on?"/>
+            </div>
+          </div>
+          <div style={{marginTop:14}}>
+            <label>Biggest fear about this purchase</label>
+            <input type="text" value={partners[i]?.biggestFear||""} onChange={e=>setPartners(p=>({...p,[i]:{...p[i],biggestFear:e.target.value}}))} placeholder="e.g. overpaying, too far from family, money pit, wrong community…"/>
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
+
+// ── Stage: Output ─────────────────────────────────────────────────────────
+function StageOutput({loading,error,aiOutput,localOutput,localLoading,handleCopy,copied,outputRef,targetArea,onRetry}) {
+  if(loading) return (
+    <div className="loading-wrap">
+      <div className="spinner"/>
+      <div className="loading-text">Analyzing your full picture…</div>
+      <div className="loading-sub">Priorities, future horizon, partner alignment, and local intel — all running now.</div>
+    </div>
+  );
+  if(error) return (
+    <div>
+      <div className="error-box" style={{marginBottom:16}}>{error}</div>
+      <p style={{fontSize:13,color:C.mutedText,marginBottom:16}}>Your answers are still saved — tap below to try the analysis again.</p>
+      <button className="btn-primary" onClick={onRetry}>Try again →</button>
+    </div>
+  );
+  if(!aiOutput) return null;
+
+  const alignColor=a=>a==="strong"?C.sage:a==="moderate"?C.gold:C.blush;
+  const tagColor=t=>t==="alignment"?C.gold:t==="tension"?C.blush:"#a8cbb0";
+
+  return (
+    <div ref={outputRef}>
+      <h1 className="section-title">Your Analysis</h1>
+      <p className="section-desc" style={{marginBottom:28}}>Priorities mapped. Future horizon assessed. Local intel pulled. Here's what matters.</p>
+
+      <div className="summary-box">{aiOutput.execSummary}</div>
+
+      {aiOutput.rentVsBuyVerdict && (
+        <div className="output-section">
+          <div className="output-section-title">Rent vs. Buy — Honest Take</div>
+          <div className="card" style={{borderLeft:`4px solid ${C.sage}`}}>
+            <p style={{fontSize:15,lineHeight:1.7}}>{aiOutput.rentVsBuyVerdict}</p>
+          </div>
+        </div>
+      )}
+
+      <div className="output-section">
+        <div className="output-section-title">Firm Stances — Don't Waste Our Time</div>
+        {aiOutput.firmStances?.map((s,i)=>(
+          <div className="stance-row" key={i}>
+            <div className="stance-tag s-firm">FIRM</div>
+            <div className="stance-body"><strong>[{s.category}]</strong> {s.requirement}</div>
+            <div className="stance-note">{s.whyFirm}{s.whoHoldsIt&&<><br/><em>{s.whoHoldsIt}</em></>}</div>
+          </div>
+        ))}
+      </div>
+
+      <div className="output-section">
+        <div className="output-section-title">Flexible Zones — Room to Negotiate</div>
+        {aiOutput.flexibleZones?.map((z,i)=>(
+          <div className="stance-row" key={i}>
+            <div className="stance-tag s-flex">FLEX</div>
+            <div className="stance-body"><strong>[{z.category}]</strong> {z.factor}</div>
+            <div className="stance-note">{z.tradeoffNote}</div>
+          </div>
+        ))}
+      </div>
+
+      {aiOutput.futureHorizonAnalysis?.length>0&&(
+        <div className="output-section">
+          <div className="output-section-title">Future Horizon — The Long Game</div>
+          {aiOutput.futureHorizonAnalysis.map((h,i)=>(
+            <div className="horizon-out-card" key={i}>
+              <div className="horizon-out-hdr">
+                <span className="horizon-out-title">{h.title}</span>
+                <span className="horizon-out-tag" style={{color:tagColor(h.tag)}}>{h.tag}</span>
+              </div>
+              <div className="horizon-out-body">{h.insight}</div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {aiOutput.readinessAssessment && (aiOutput.readinessAssessment.summary || aiOutput.readinessAssessment.verdict) && (
+        <div className="output-section">
+          <div className="output-section-title">Readiness Check — Are You Ready to Buy?</div>
+          {aiOutput.readinessAssessment.verdict && (
+            <div style={{display:"inline-block",fontWeight:700,fontSize:13,letterSpacing:.4,textTransform:"uppercase",color:C.white,background:C.sage,borderRadius:20,padding:"5px 14px",marginBottom:12}}>
+              {aiOutput.readinessAssessment.verdict}
+            </div>
+          )}
+          <div className="summary-box">{aiOutput.readinessAssessment.summary}</div>
+          {aiOutput.readinessAssessment.watchItems?.length>0 && (
+            <div style={{marginTop:12}}>
+              <div style={{fontWeight:600,fontSize:14,color:C.mutedText,marginBottom:6}}>Watch items before / while you buy:</div>
+              <ul style={{margin:0,paddingLeft:20}}>
+                {aiOutput.readinessAssessment.watchItems.map((w,i)=>(
+                  <li key={i} style={{fontSize:15,lineHeight:1.7,marginBottom:4}}>{w}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+
+      {aiOutput.decisionMakingGuidance && (aiOutput.decisionMakingGuidance.howTheyDecide || aiOutput.decisionMakingGuidance.whenStuck) && (
+        <div className="output-section">
+          <div className="output-section-title">How You Two Decide</div>
+          {aiOutput.decisionMakingGuidance.howTheyDecide && (
+            <p style={{fontSize:15,lineHeight:1.7,marginBottom:12}}>{aiOutput.decisionMakingGuidance.howTheyDecide}</p>
+          )}
+          {aiOutput.decisionMakingGuidance.whenStuck && (
+            <div style={{borderLeft:`4px solid ${C.gold}`,background:C.lightSage,borderRadius:"0 8px 8px 0",padding:"14px 18px"}}>
+              <div style={{fontWeight:700,fontSize:13,letterSpacing:.3,textTransform:"uppercase",color:C.gold,marginBottom:6}}>When you're stuck or seeing it differently</div>
+              <p style={{fontSize:15,lineHeight:1.7,margin:0}}>{aiOutput.decisionMakingGuidance.whenStuck}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {aiOutput.partnerAlignments?.length>0&&(
+        <div className="output-section">
+          <div className="output-section-title">Partner Alignment Check</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+            {aiOutput.partnerAlignments.map((a,i)=>(
+              <div key={i} style={{border:`1.5px solid ${alignColor(a.alignment)}33`,borderRadius:8,padding:"12px 16px",background:C.white}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                  <div style={{width:10,height:10,borderRadius:"50%",background:alignColor(a.alignment),flexShrink:0}}/>
+                  <strong style={{fontSize:13}}>{a.factor}</strong>
+                </div>
+                <p style={{fontSize:12,color:C.mutedText,lineHeight:1.5}}>{a.note}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {aiOutput.conflictsToResolve?.length>0&&(
+        <div className="output-section">
+          <div className="output-section-title">Conversations Worth Having First</div>
+          {aiOutput.conflictsToResolve.map((c,i)=>(
+            <div className="conflict-box" key={i}>
+              <div className="conflict-title">{c.topic}</div>
+              <div className="conflict-body">{c.description}</div>
+              {c.suggestedConversation&&<p style={{marginTop:8,fontSize:12,color:C.sage,fontStyle:"italic"}}>💬 {c.suggestedConversation}</p>}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Local Intelligence */}
+      <div className="output-section">
+        <div className="output-section-title">Local Intelligence{targetArea?` — ${targetArea}`:""}</div>
+        <div className="local-panel">
+          <div className="local-panel-title">What we know about your area</div>
+          <div className="local-panel-sub">Neighborhood character · school landscape · lifestyle fit · long-term suitability</div>
+          {localLoading&&!localOutput&&(
+            <div className="ldots">
+              <div className="ldot"/><div className="ldot"/><div className="ldot"/>
+              <span className="ldot-text">Pulling local knowledge…</span>
+            </div>
+          )}
+          {localOutput&&(
+            <>
+              <div className="li-block"><div className="li-heading">Area Snapshot</div><div className="li-body">{localOutput.areaSnapshot}</div></div>
+              {localOutput.neighborhoodsToExplore?.length>0&&(
+                <div className="li-block">
+                  <div className="li-heading">Neighborhoods Worth Exploring</div>
+                  {localOutput.neighborhoodsToExplore.map((n,i)=>(
+                    <div key={i} style={{marginBottom:10}}>
+                      <span style={{color:C.gold,fontWeight:700,fontSize:13}}>{n.name}</span>
+                      <span className="li-body"> — {n.why}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {localOutput.schoolDistrictNotes&&<div className="li-block"><div className="li-heading">Schools</div><div className="li-body">{localOutput.schoolDistrictNotes}</div></div>}
+              {localOutput.lifestyleMatches?.length>0&&(
+                <div className="li-block">
+                  <div className="li-heading">Lifestyle Matches</div>
+                  <div className="li-body">{localOutput.lifestyleMatches.map((l,i)=><div key={i} style={{marginBottom:4}}>• {l}</div>)}</div>
+                </div>
+              )}
+              {localOutput.thingsToKnowBeforeYouBuy?.length>0&&(
+                <div className="li-block">
+                  <div className="li-heading">Things to Know Before You Buy</div>
+                  <div className="li-body">{localOutput.thingsToKnowBeforeYouBuy.map((t,i)=><div key={i} style={{marginBottom:6}}>⚑ {t}</div>)}</div>
+                </div>
+              )}
+              {localOutput.retirementAndLongTermFit&&<div className="li-block"><div className="li-heading">Long-Term & Retirement Fit</div><div className="li-body">{localOutput.retirementAndLongTermFit}</div></div>}
+              {localOutput.alternativeAreasToConsider?.length>0&&(
+                <div className="li-block">
+                  <div className="li-heading">Alternative Areas to Consider</div>
+                  {localOutput.alternativeAreasToConsider.map((a,i)=>(
+                    <div key={i} style={{marginBottom:10}}>
+                      <span style={{color:C.gold,fontWeight:700,fontSize:13}}>{a.name}</span>
+                      <span className="li-body"> — {a.why}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+          {!localLoading&&!localOutput&&(
+            <div className="li-block"><div className="li-body" style={{opacity:.6}}>No target area entered — add one in the Location step to pull local intelligence.</div></div>
+          )}
+        </div>
+      </div>
+
+      {aiOutput.keyQuestions?.length>0&&(
+        <div className="output-section">
+          <div className="output-section-title">Questions to Sit With</div>
+          <div className="card">
+            {aiOutput.keyQuestions.map((q,i)=>(
+              <p key={i} style={{fontSize:14,lineHeight:1.7,borderBottom:i<aiOutput.keyQuestions.length-1?"1px solid #e8ede9":"none",paddingBottom:10,marginBottom:10}}>
+                {i+1}. {q}
+              </p>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="agent-box">
+        <div className="agent-box-title">Agent Brief — Ready to Share</div>
+        <div className="agent-out">{aiOutput.agentBrief}</div>
+        <button className="copy-btn" onClick={handleCopy}>{copied?"✓ Copied!":"Copy Brief"}</button>
+      </div>
+    </div>
+  );
+}
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>

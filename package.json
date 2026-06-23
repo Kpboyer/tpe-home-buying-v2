@@ -1,0 +1,9 @@
+{
+  "name": "home-purchase-tool",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Home Purchase Decision Tool with secure Anthropic proxy and rate limiting",
+  "dependencies": {
+    "@netlify/blobs": "^10.7.9"
+  }
+}

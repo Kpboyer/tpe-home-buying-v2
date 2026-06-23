@@ -1,0 +1,14 @@
+# Netlify configuration for the Home Purchase Tool
+[build]
+  publish = "."
+  functions = "netlify/functions"
+
+[functions]
+  # Use the modern Node runtime for the function
+  node_bundler = "esbuild"
+
+# Send the tool itself as the homepage
+[[redirects]]
+  from = "/"
+  to = "/index.html"
+  status = 200
