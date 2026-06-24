@@ -492,7 +492,14 @@ function App() {
     if (!ct.includes("text/event-stream")) {
       // Not a stream — likely a JSON error from the function
       const data = await resp.json();
-      if (data && data.error) throw new Error(typeof data.error === "string" ? data.error : (data.error.message || "API error"));
+      if (data && data.error) {
+        const em = typeof data.error === "string"
+          ? data.error
+          : (data.error.message || JSON.stringify(data.error));
+        throw new Error(em);
+      }
+      // some error shapes use top-level type:"error"
+      if (data && data.type === "error") throw new Error(data.error?.message || JSON.stringify(data));
       // or a non-streamed Anthropic message
       return data?.content?.find(b=>b.type==="text")?.text || "";
     }
@@ -578,23 +585,39 @@ Be specific. Name actual neighborhoods, schools, trails, quirks.`;
       partnerPriorities:Object.entries(partners).map(([idx,p])=>({name:safeDeciders[idx]?.name||`Partner ${Number(idx)+1}`,locationPriorities:p.locationFactorPriorities,homePriorities:p.homeFactorPriorities,dealbreakers:p.dealbreakers,flexibles:p.flexibles,biggestFear:p.biggestFear})),
     };
     runLocalKnowledge(intake);
-    const sys=`You are a relationship systems consultant helping couples make major home purchase decisions. Path: "${pathCfg?.title}". Return ONLY a valid JSON object. No markdown, no explanation, just raw JSON starting with { and ending with }.
 
-Use this exact shape: {"execSummary":"2-3 sentences briefing a real estate agent","rentVsBuyVerdict":"direct buy/wait/depends, or empty string if retirement path","firmStances":[{"category":"","requirement":"","whyFirm":"","whoHoldsIt":""}],"flexibleZones":[{"category":"","factor":"","tradeoffNote":""}],"partnerAlignments":[{"factor":"","alignment":"strong","note":""}],"conflictsToResolve":[{"topic":"","description":"","suggestedConversation":""}],"futureHorizonAnalysis":[{"title":"","insight":"","tag":"consideration"}],"readinessAssessment":{"verdict":"ready / proceed-with-caution / not-yet / depends","summary":"2-3 sentences on whether they are positioned to pull the trigger, naming the biggest risk to plan around","watchItems":["specific risk to monitor or de-risk before or while buying"]},"decisionMakingGuidance":{"howTheyDecide":"1-2 sentences reflecting their decision style back to them","whenStuck":"a concrete suggested approach for when they look at this from very different perspectives, especially the love-the-house-but-it-has-problems situation"},"agentBrief":"1-2 paragraphs for the agent","keyQuestions":["","",""]}
+    const baseRole = `You are a relationship systems consultant helping couples make major home purchase decisions. Path: "${pathCfg?.title}". Return ONLY a valid JSON object. No markdown, no explanation, just raw JSON starting with { and ending with }.`;
+    const purchaseNote = ` IMPORTANT: if family.purchaseType is second, seasonal, investment, or additional (not primary), frame everything accordingly \u2014 weigh rental income, financing on a non-primary, carrying two properties, and investment returns rather than primary-residence logic, and do not treat renting-instead as the alternative.`;
 
-Rules: each string value under 55 words. Max 4 firmStances, 3 flexibleZones, 4 partnerAlignments, 2 conflictsToResolve, 3 futureHorizonAnalysis, 3 watchItems, 3 keyQuestions. Be direct. Name tensions. Tailor to the path. For readinessAssessment, weigh layoff, relocation, caregiving and financing risks honestly and say plainly when continuing to rent may be wiser. Max 3 watchItems. For decisionMakingGuidance, be practical and specific to how THIS couple described deciding together. IMPORTANT: if family.purchaseType is second, seasonal, investment, or additional (not primary), frame the entire analysis accordingly — weigh rental income, financing on a non-primary, carrying two properties, and investment returns rather than primary-residence logic, and do not treat renting-instead as the alternative.`
+    // CALL A \u2014 core analysis (half the output, finishes fast)
+    const sysA = baseRole + `\n\nUse this exact shape: {"execSummary":"2-3 sentences briefing a real estate agent","rentVsBuyVerdict":"direct buy/wait/depends, or empty string if retirement path","firmStances":[{"category":"","requirement":"","whyFirm":"","whoHoldsIt":""}],"flexibleZones":[{"category":"","factor":"","tradeoffNote":""}],"partnerAlignments":[{"factor":"","alignment":"strong","note":""}],"conflictsToResolve":[{"topic":"","description":"","suggestedConversation":""}]}\n\nRules: each string under 55 words. Max 4 firmStances, 3 flexibleZones, 4 partnerAlignments, 2 conflictsToResolve. Be direct. Name tensions. Tailor to the path.` + purchaseNote;
+
+    // CALL B \u2014 extended analysis (the other half)
+    const sysB = baseRole + `\n\nUse this exact shape: {"futureHorizonAnalysis":[{"title":"","insight":"","tag":"consideration"}],"readinessAssessment":{"verdict":"ready / proceed-with-caution / not-yet / depends","summary":"2-3 sentences on whether they are positioned to pull the trigger, naming the biggest risk to plan around","watchItems":["specific risk to monitor or de-risk before or while buying"]},"decisionMakingGuidance":{"howTheyDecide":"1-2 sentences reflecting their decision style back to them","whenStuck":"a concrete suggested approach for when they look at this from very different perspectives, especially the love-the-house-but-it-has-problems situation"},"agentBrief":"1-2 paragraphs for the agent","keyQuestions":["","",""]}\n\nRules: each string under 55 words. Max 3 futureHorizonAnalysis, 3 watchItems, 3 keyQuestions. For readinessAssessment, weigh layoff, relocation, caregiving and financing risks honestly and say plainly when continuing to rent may be wiser. For decisionMakingGuidance, be practical and specific to how THIS couple described deciding together.` + purchaseNote;
+
+    const userMsg = `Intake (${intake.path} path):\n${JSON.stringify(intake)}`;
+
+    const callOne = async (sys, tokens) => {
+      const resp = await fetch((_CFG.apiEndpoint || "/.netlify/functions/analyze"), {
+        method:"POST", headers:{"Content-Type":"application/json"},
+        body:JSON.stringify({model:"claude-sonnet-4-6", max_tokens:tokens, system:sys,
+          messages:[{role:"user", content:userMsg}]})
+      });
+      const raw = await readStreamedText(resp);
+      if(!raw){ throw new Error("Empty response from AI"); }
+      const stripped = raw.replace(/```json[\s\S]*?```|```[\s\S]*?```/g, m=>m.slice(m.indexOf("{")));
+      const a = stripped.indexOf("{"), b = stripped.lastIndexOf("}");
+      if(a===-1||b===-1){ throw new Error("No JSON found in response"); }
+      return JSON.parse(stripped.slice(a,b+1));
+    };
+
     try {
-      const resp=await fetch((_CFG.apiEndpoint || "/.netlify/functions/analyze"),{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1500,system:sys,
-          messages:[{role:"user",content:`Intake (${intake.path} path):\n${JSON.stringify(intake)}`}]})});
-      const raw=await readStreamedText(resp);
-      if(!raw){throw new Error("Empty response from AI");}
-      // Strip markdown fences and find the JSON object
-      const stripped=raw.replace(/```json[\s\S]*?```|```[\s\S]*?```/g,s=>s.slice(s.indexOf("{")));
-      const jsonStart=stripped.indexOf("{");
-      const jsonEnd=stripped.lastIndexOf("}");
-      if(jsonStart===-1||jsonEnd===-1){throw new Error("No JSON found in response");}
-      setAiOutput(JSON.parse(stripped.slice(jsonStart,jsonEnd+1)));
+      // Run both halves in parallel \u2014 each is small enough to finish well under the limit.
+      const [partA, partB] = await Promise.all([
+        callOne(sysA, 1100),
+        callOne(sysB, 1100),
+      ]);
+      setAiOutput({ ...partA, ...partB });
     } catch(e){
       console.error("Analysis error:",e);
       setError(`Analysis failed: ${e.message}. Please try again.`);
