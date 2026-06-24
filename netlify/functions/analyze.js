@@ -93,20 +93,29 @@ exports.handler = async (event) => {
 
   const model = payload.model || "claude-sonnet-4-6";
 
-  // ---- call Anthropic ----
+  // ---- call Anthropic (with a hard timeout so we never hit the platform limit) ----
   let data, status;
+  const ctrl = new AbortController();
+  const TIMEOUT_MS = parseInt(process.env.ANTHROPIC_TIMEOUT_MS || "24000", 10);
+  const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
   try {
     const resp = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-api-key": KEY, "anthropic-version": "2023-06-01" },
       body: JSON.stringify({ model, max_tokens: max_tokens || 1500, ...(system ? { system } : {}), messages }),
+      signal: ctrl.signal,
     });
     status = resp.status;
     data = await resp.json();
   } catch (err) {
-    return { statusCode: 502, headers: cors,
-      body: JSON.stringify({ error: "Failed to reach Anthropic API: " + (err.message || "unknown error") }) };
+    clearTimeout(timer);
+    const aborted = err.name === "AbortError";
+    return { statusCode: aborted ? 504 : 502, headers: { ...cors, "Content-Type": "application/json" },
+      body: JSON.stringify({ error: aborted
+        ? "The AI analysis took too long and timed out. Please try again."
+        : "Failed to reach Anthropic API: " + (err.message || "unknown error") }) };
   }
+  clearTimeout(timer);
 
   // ---- only count SUCCESSFUL, billable calls toward the daily cap ----
   if (store && status >= 200 && status < 300) {
