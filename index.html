@@ -482,7 +482,7 @@ Return ONLY valid JSON:
 Be specific. Name actual neighborhoods, schools, trails, quirks.`;
     try {
       const resp=await fetch((_CFG.apiEndpoint || "/.netlify/functions/analyze"),{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1500,system:sys,
+        body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1000,system:sys,
           messages:[{role:"user",content:`Target area: ${location.targetAreas}\nPath: ${pathCfg?.title}\nFamily profile:\n${JSON.stringify({location:intake.location,future:intake.future,home:intake.home},null,2)}`}]})});
       const data=await resp.json();
       const raw=data.content?.find(b=>b.type==="text")?.text||"";
@@ -527,7 +527,7 @@ Use this exact shape: {"execSummary":"2-3 sentences briefing a real estate agent
 Rules: each string value under 60 words. Max 4 firmStances, 4 flexibleZones, 4 partnerAlignments, 2 conflictsToResolve, 3 futureHorizonAnalysis. Be direct. Name tensions. Tailor to the path. For readinessAssessment, weigh layoff, relocation, caregiving and financing risks honestly and say plainly when continuing to rent may be wiser. Max 3 watchItems. For decisionMakingGuidance, be practical and specific to how THIS couple described deciding together.`
     try {
       const resp=await fetch((_CFG.apiEndpoint || "/.netlify/functions/analyze"),{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:2000,system:sys,
+        body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1300,system:sys,
           messages:[{role:"user",content:`Intake (${intake.path} path):\n${JSON.stringify(intake)}`}]})});
       const data=await resp.json();
       if(data.error){throw new Error(data.error.message||"API error");}

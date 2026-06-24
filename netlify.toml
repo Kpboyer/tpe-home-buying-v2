@@ -4,6 +4,8 @@
   functions = "netlify/functions"
 
 [functions]
+  # Pro plan allows raising the synchronous timeout up to 26s
+  timeout = 26
   # Use the modern Node runtime for the function
   node_bundler = "esbuild"
 
