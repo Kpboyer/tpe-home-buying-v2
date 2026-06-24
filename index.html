@@ -562,6 +562,27 @@ Be specific. Name actual neighborhoods, schools, trails, quirks.`;
     setLocalLoading(false);
   };
 
+  // Parse JSON that may have minor AI formatting slips (trailing commas,
+  // missing commas between elements, smart quotes). Tries strict first,
+  // then applies safe repairs.
+  const parseLooseJSON = (text) => {
+    try { return JSON.parse(text); } catch (e) {}
+    let t = text;
+    // normalize smart quotes
+    t = t.replace(/[\u201C\u201D]/g, '"').replace(/[\u2018\u2019]/g, "'");
+    // remove trailing commas before } or ]
+    t = t.replace(/,\s*([}\]])/g, "$1");
+    // insert missing commas between adjacent objects/arrays/strings:  }  {  ->  },{
+    t = t.replace(/(["}\]])\s*\n\s*(["{\[])/g, "$1,$2");
+    t = t.replace(/}\s*{/g, "},{");
+    t = t.replace(/]\s*\[/g, "],[");
+    try { return JSON.parse(t); } catch (e2) {
+      // last resort: strip any control chars and retry once
+      t = t.replace(/[\u0000-\u001F]+/g, " ").replace(/,\s*([}\]])/g, "$1");
+      return JSON.parse(t);
+    }
+  };
+
   const runAnalysis = async () => {
     setLoading(true); setError(""); setStageIdx(stages.length-1);
     // Ensure deciders always has at least 2 entries for downstream safety
@@ -608,7 +629,7 @@ Be specific. Name actual neighborhoods, schools, trails, quirks.`;
       const stripped = raw.replace(/```json[\s\S]*?```|```[\s\S]*?```/g, m=>m.slice(m.indexOf("{")));
       const a = stripped.indexOf("{"), b = stripped.lastIndexOf("}");
       if(a===-1||b===-1){ throw new Error("No JSON found in response"); }
-      return JSON.parse(stripped.slice(a,b+1));
+      return parseLooseJSON(stripped.slice(a,b+1));
     };
 
     try {
