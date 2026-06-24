@@ -67,6 +67,10 @@
         if(accent) C.colors.accent=accent;
         var logo=q.get("logo");
         if(logo) C.logoUrl=logo;
+        var phone=q.get("phone"); if(phone) C.agentPhone=phone;
+        var email=q.get("email"); if(email) C.agentEmail=email;
+        var web=q.get("web"); if(web) C.agentWeb=web;
+        var intro=q.get("intro"); if(intro) C.agentIntro=intro;
       }catch(e){ /* ignore bad params, fall back to defaults */ }
     })();
   </script>
@@ -178,6 +182,9 @@ const css = `
   .path-hero-label{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:${C.gold};font-weight:700;margin-bottom:14px}
   .path-hero-title{font-family:'EB Garamond',serif;font-size:38px;color:${C.cream};line-height:1.15;margin-bottom:12px;max-width:560px}
   .path-hero-sub{font-size:15px;color:rgba(248,243,236,.6);line-height:1.7;max-width:480px}
+  .agent-intro{margin-top:18px;padding:14px 18px;background:rgba(248,243,236,.08);border-left:3px solid ${C.gold};border-radius:0 6px 6px 0;font-family:'EB Garamond',serif;font-size:16px;color:${C.cream};line-height:1.6;max-width:520px;font-style:italic}
+  .agent-contact{padding:20px 40px;background:${C.lightSage};border-top:1px solid rgba(0,0,0,.06);font-size:13px;color:${C.mutedText};text-align:center;line-height:1.7}
+  .agent-contact strong{color:${C.darkGreen};font-size:14px}
   .path-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;padding:40px;max-width:780px;margin:0 auto;width:100%}
   .path-card{background:${C.white};border:1.5px solid #dde8e0;border-radius:12px;padding:28px 26px;cursor:pointer;transition:all .18s;position:relative;overflow:hidden}
   .path-card:hover{border-color:${C.sage};box-shadow:0 4px 20px rgba(26,61,43,.08);transform:translateY(-1px)}
@@ -304,6 +311,20 @@ const css = `
   .agent-out{background:rgba(248,243,236,.08);border-radius:6px;padding:20px;font-size:13px;color:rgba(248,243,236,.85);line-height:1.8;white-space:pre-wrap;font-family:'Lato',sans-serif;max-height:360px;overflow-y:auto}
   .copy-btn{margin-top:14px;background:${C.gold};border:none;border-radius:6px;padding:10px 24px;font-family:'Lato',sans-serif;font-size:13px;font-weight:700;letter-spacing:.06em;cursor:pointer;color:${C.darkGreen};text-transform:uppercase;transition:opacity .2s}
   .copy-btn:hover{opacity:.85}
+  .save-btn{background:${C.darkGreen};border:none;border-radius:6px;padding:9px 18px;font-family:'Lato',sans-serif;font-size:12px;font-weight:700;letter-spacing:.05em;cursor:pointer;color:#fff;text-transform:uppercase;transition:opacity .2s}
+  .save-btn.ghost{background:#fff;color:${C.darkGreen};border:1.5px solid ${C.darkGreen}}
+  .save-btn:hover{opacity:.85}
+
+  @media print {
+    @page { margin: 16mm; }
+    body { background:#fff !important; }
+    .no-print, .copy-btn, .save-btn, button { display:none !important; }
+    .app-header, .progress-bar, .header, .nav { display:none !important; }
+    .app { box-shadow:none !important; max-width:100% !important; }
+    .output-section, .card, .summary-box { break-inside: avoid; page-break-inside: avoid; }
+    .section-title { color:#1A3D2B !important; }
+    a { text-decoration:none; color:inherit; }
+  }
 
   .loading-wrap{text-align:center;padding:60px 0}
   .spinner{width:36px;height:36px;border-radius:50%;border:3px solid #d5e8da;border-top-color:${C.sage};animation:spin .9s linear infinite;margin:0 auto 16px}
@@ -338,15 +359,15 @@ const URGENCY_OPTIONS = [
 
 const LOCATION_FACTORS = [
   "School district quality","Walkability","Proximity to work","Community / culture fit",
-  "Access to nature/parks","Neighborhood safety","Public transit","Local dining/shopping",
-  "Religious community","Specific town/city","Distance from family",
+  "Access to nature/parks","Waterfront / water access","Neighborhood safety","Public transit",
+  "Local dining/shopping","Religious community","Specific town/city","Distance from family",
 ];
 
 const HOME_FACTORS = [
   "Square footage","Bedroom count","Dedicated home office","At-home gym space",
   "Outdoor/yard space","Garage","Open floor plan","Formal dining room",
   "Basement","ADU / in-law potential","Hobby farm / animals","Workshop or studio",
-  "Pool or space for one","Accessibility features","Single-story layout",
+  "Pool or space for one","Dock / waterfront / boat access","Accessibility features","Single-story layout",
 ];
 
 const CONDITION_OPTIONS = [
@@ -425,7 +446,7 @@ function App() {
       {id:1,name:"Partner A",role:"partner",topConcern:""},
       {id:2,name:"Partner B",role:"partner",topConcern:""},
     ],
-    kids:[],extendedInvolved:false,extendedNote:"",currentSituation:"renting",openToRenting:"",
+    kids:[],extendedInvolved:false,extendedNote:"",purchaseType:"",currentSituation:"renting",openToRenting:"",
   });
   const [urgency, setUrgency] = React.useState({drivers:[],timeline:"",additionalContext:""});
   const [location, setLocation] = React.useState({targetAreas:"",flexOnLocation:"",factors:[],schoolDistrictPriority:0,walkabilityPriority:0,commuteMax:""});
@@ -464,6 +485,44 @@ function App() {
     setPartners(p=>({...p,[pi]:{...p[pi],[`${group}Priorities`]:{...p[pi][`${group}Priorities`],[factor]:val}}}));
   };
 
+  // Reads a streamed SSE response from the analyze function and returns the full text.
+  // Falls back to plain JSON if the response wasn't streamed (e.g. an error object).
+  const readStreamedText = async (resp) => {
+    const ct = resp.headers.get("content-type") || "";
+    if (!ct.includes("text/event-stream")) {
+      // Not a stream — likely a JSON error from the function
+      const data = await resp.json();
+      if (data && data.error) throw new Error(typeof data.error === "string" ? data.error : (data.error.message || "API error"));
+      // or a non-streamed Anthropic message
+      return data?.content?.find(b=>b.type==="text")?.text || "";
+    }
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "", text = "";
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop() || "";
+      for (const line of lines) {
+        const t = line.trim();
+        if (!t.startsWith("data:")) continue;
+        const payload = t.slice(5).trim();
+        if (!payload || payload === "[DONE]") continue;
+        try {
+          const evt = JSON.parse(payload);
+          if (evt.type === "content_block_delta" && evt.delta?.type === "text_delta") {
+            text += evt.delta.text;
+          } else if (evt.type === "error") {
+            throw new Error(evt.error?.message || "Streaming error");
+          }
+        } catch (e) { /* ignore non-JSON keep-alive lines */ }
+      }
+    }
+    return text;
+  };
+
   const runLocalKnowledge = async (intake) => {
     if (!location.targetAreas || location.targetAreas.trim().length < 3) return;
     setLocalLoading(true);
@@ -482,10 +541,9 @@ Return ONLY valid JSON:
 Be specific. Name actual neighborhoods, schools, trails, quirks.`;
     try {
       const resp=await fetch((_CFG.apiEndpoint || "/.netlify/functions/analyze"),{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1000,system:sys,
+        body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1200,system:sys,
           messages:[{role:"user",content:`Target area: ${location.targetAreas}\nPath: ${pathCfg?.title}\nFamily profile:\n${JSON.stringify({location:intake.location,future:intake.future,home:intake.home},null,2)}`}]})});
-      const data=await resp.json();
-      const raw=data.content?.find(b=>b.type==="text")?.text||"";
+      const raw=await readStreamedText(resp);
       if(raw){
         const jsonStart=raw.indexOf("{");
         const jsonEnd=raw.lastIndexOf("}");
@@ -510,7 +568,7 @@ Be specific. Name actual neighborhoods, schools, trails, quirks.`;
 
     const intake = {
       path: pathCfg?.title,
-      family:{decisionMakers:safeDeciders,children:family.kids,extendedFamilyInvolved:family.extendedInvolved,extendedNote:family.extendedNote,currentSituation:family.currentSituation,openToRenting:family.openToRenting},
+      family:{decisionMakers:safeDeciders,children:family.kids,extendedFamilyInvolved:family.extendedInvolved,extendedNote:family.extendedNote,purchaseType:family.purchaseType,currentSituation:family.currentSituation,openToRenting:family.openToRenting},
       urgency:{drivers:urgency.drivers,timeline:urgency.timeline,context:urgency.additionalContext},
       location:{targetAreas:location.targetAreas,flexOnLocation:location.flexOnLocation,importantFactors:location.factors,schoolDistrictPriority:location.schoolDistrictPriority,walkabilityPriority:location.walkabilityPriority,commuteMax:location.commuteMax},
       home:{minBeds:home.minBeds,minBaths:home.minBaths,budgetRange:`$${home.budgetMin}–$${home.budgetMax}`,importantFeatures:home.factors,conditionComfort:home.condition,mustHaves:home.mustHaveList,absoluteNos:home.neverList},
@@ -524,14 +582,12 @@ Be specific. Name actual neighborhoods, schools, trails, quirks.`;
 
 Use this exact shape: {"execSummary":"2-3 sentences briefing a real estate agent","rentVsBuyVerdict":"direct buy/wait/depends, or empty string if retirement path","firmStances":[{"category":"","requirement":"","whyFirm":"","whoHoldsIt":""}],"flexibleZones":[{"category":"","factor":"","tradeoffNote":""}],"partnerAlignments":[{"factor":"","alignment":"strong","note":""}],"conflictsToResolve":[{"topic":"","description":"","suggestedConversation":""}],"futureHorizonAnalysis":[{"title":"","insight":"","tag":"consideration"}],"readinessAssessment":{"verdict":"ready / proceed-with-caution / not-yet / depends","summary":"2-3 sentences on whether they are positioned to pull the trigger, naming the biggest risk to plan around","watchItems":["specific risk to monitor or de-risk before or while buying"]},"decisionMakingGuidance":{"howTheyDecide":"1-2 sentences reflecting their decision style back to them","whenStuck":"a concrete suggested approach for when they look at this from very different perspectives, especially the love-the-house-but-it-has-problems situation"},"agentBrief":"1-2 paragraphs for the agent","keyQuestions":["","",""]}
 
-Rules: each string value under 60 words. Max 4 firmStances, 4 flexibleZones, 4 partnerAlignments, 2 conflictsToResolve, 3 futureHorizonAnalysis. Be direct. Name tensions. Tailor to the path. For readinessAssessment, weigh layoff, relocation, caregiving and financing risks honestly and say plainly when continuing to rent may be wiser. Max 3 watchItems. For decisionMakingGuidance, be practical and specific to how THIS couple described deciding together.`
+Rules: each string value under 55 words. Max 4 firmStances, 3 flexibleZones, 4 partnerAlignments, 2 conflictsToResolve, 3 futureHorizonAnalysis, 3 watchItems, 3 keyQuestions. Be direct. Name tensions. Tailor to the path. For readinessAssessment, weigh layoff, relocation, caregiving and financing risks honestly and say plainly when continuing to rent may be wiser. Max 3 watchItems. For decisionMakingGuidance, be practical and specific to how THIS couple described deciding together. IMPORTANT: if family.purchaseType is second, seasonal, investment, or additional (not primary), frame the entire analysis accordingly — weigh rental income, financing on a non-primary, carrying two properties, and investment returns rather than primary-residence logic, and do not treat renting-instead as the alternative.`
     try {
       const resp=await fetch((_CFG.apiEndpoint || "/.netlify/functions/analyze"),{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1300,system:sys,
+        body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1500,system:sys,
           messages:[{role:"user",content:`Intake (${intake.path} path):\n${JSON.stringify(intake)}`}]})});
-      const data=await resp.json();
-      if(data.error){throw new Error(data.error.message||"API error");}
-      const raw=data.content?.find(b=>b.type==="text")?.text||"";
+      const raw=await readStreamedText(resp);
       if(!raw){throw new Error("Empty response from AI");}
       // Strip markdown fences and find the JSON object
       const stripped=raw.replace(/```json[\s\S]*?```|```[\s\S]*?```/g,s=>s.slice(s.indexOf("{")));
@@ -566,6 +622,7 @@ Rules: each string value under 60 words. Max 4 firmStances, 4 flexibleZones, 4 p
             <div className="path-hero-label">{(_CFG.brandName || "The Papercut Effect") + " · " + (_CFG.toolSubtitle || "Home Purchase Tool")}</div>
             <div className="path-hero-title">What life are you buying this home for?</div>
             <div className="path-hero-sub">Not your life right now — the life this home needs to serve. Your kids might be 8 and 12 today, but if you're planning to move when they're grown, that's a completely different search than buying for them now. Pick the path that matches your <em style={{color:"rgba(248,243,236,0.8)"}}>intent</em>, not just your current situation.</div>
+            {_CFG.agentIntro && <div className="agent-intro">{_CFG.agentIntro}</div>}
           </div>
           <div className="path-grid">
             {Object.values(PATHS).map(p=>(
@@ -588,6 +645,14 @@ Rules: each string value under 60 words. Max 4 firmStances, 4 flexibleZones, 4 p
               <button className="btn-primary" onClick={()=>setStageIdx(0)}>Start → {PATHS[path].title}</button>
             </div>
           )}
+          {(_CFG.agentPhone || _CFG.agentEmail || _CFG.agentWeb) && (
+            <div className="agent-contact">
+              {_CFG.brandName && <div><strong>{_CFG.brandName}</strong></div>}
+              <div>
+                {[_CFG.agentPhone, _CFG.agentEmail, _CFG.agentWeb].filter(Boolean).join("  ·  ")}
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -601,7 +666,7 @@ Rules: each string value under 60 words. Max 4 firmStances, 4 flexibleZones, 4 p
     if (s==="Location") return <StageLocation location={location} setLocation={setLocation} pathCfg={pathCfg}/>;
     if (s==="Home") return <StageHome home={home} setHome={setHome} pathCfg={pathCfg}/>;
     if (s==="Future") return <StageFuture future={future} setFuture={setFuture} family={family} pathCfg={pathCfg}/>;
-    if (s==="Risk") return <StageRisk risk={risk} setRisk={setRisk} pathCfg={pathCfg}/>;
+    if (s==="Risk") return <StageRisk risk={risk} setRisk={setRisk} pathCfg={pathCfg} family={family}/>;
     if (s==="Decisions") return <StageDecisions decisions={decisions} setDecisions={setDecisions} family={family}/>;
     if (s==="Partners") return <StagePartners partners={partners} family={family} updatePartnerPriority={updatePartnerPriority} setPartners={setPartners}/>;
     if (s==="Analysis") return <StageOutput loading={loading} error={error} aiOutput={aiOutput} localOutput={localOutput} localLoading={localLoading} handleCopy={handleCopy} copied={copied} outputRef={outputRef} targetArea={location.targetAreas} onRetry={()=>{setError("");setLoading(false);runAnalysis();}}/>;
@@ -726,14 +791,25 @@ function StageFamily({family,setFamily,addKid,removeKid,updateKid,updateDecider,
         {!isRetirement && (
           <>
             <div style={{marginBottom:16}}>
-              <label>Current living situation</label>
-              <Chips options={[{id:"renting",label:"Renting"},{id:"own",label:"Owning (selling)"},{id:"parents",label:"With family"},{id:"other",label:"Other"}]} selected={family.currentSituation} onChange={v=>setFamily(f=>({...f,currentSituation:v}))} multi={false}/>
+              <label>What kind of purchase is this?</label>
+              <p className="hint">This shapes everything that follows — buying a second home or investment property is a very different decision than your main residence.</p>
+              <Chips options={[
+                {id:"primary",label:"Our main home"},
+                {id:"second",label:"A second home"},
+                {id:"seasonal",label:"Seasonal / part-year home"},
+                {id:"investment",label:"Investment / rental property"},
+                {id:"additional",label:"Another additional property"},
+              ]} selected={family.purchaseType} onChange={v=>setFamily(f=>({...f,purchaseType:v}))} multi={false}/>
             </div>
-            <div>
+            <div style={{marginBottom:16}}>
+              <label>{family.purchaseType && family.purchaseType!=="primary" ? "Your current PRIMARY living situation" : "Current living situation"}</label>
+              <Chips options={[{id:"renting",label:"Renting"},{id:"own",label:"Own our home"},{id:"own_selling",label:"Own & selling it"},{id:"parents",label:"With family"},{id:"other",label:"Other"}]} selected={family.currentSituation} onChange={v=>setFamily(f=>({...f,currentSituation:v}))} multi={false}/>
+            </div>
+            {(!family.purchaseType || family.purchaseType==="primary") && <div>
               <label>Is continuing to rent genuinely on the table?</label>
               <p className="hint">No wrong answer — helps us assess real urgency.</p>
               <Chips options={[{id:"yes",label:"Yes, absolutely"},{id:"maybe",label:"Maybe, if the right house doesn't appear"},{id:"no",label:"No — we're buying"}]} selected={family.openToRenting} onChange={v=>setFamily(f=>({...f,openToRenting:v}))} multi={false}/>
-            </div>
+            </div>}
           </>
         )}
       </div>
@@ -1034,7 +1110,7 @@ const RISK_FACTORS = [
   {id:"none", title:"None we can think of", desc:"We feel stable on all fronts right now"},
 ];
 
-function StageRisk({risk, setRisk, pathCfg}) {
+function StageRisk({risk, setRisk, pathCfg, family}) {
   const set=(k,v)=>setRisk(r=>({...r,[k]:v}));
   const toggle=(id)=>setRisk(r=>({...r,riskFactors:r.riskFactors.includes(id)?r.riskFactors.filter(x=>x!==id):[...r.riskFactors,id]}));
   return (
@@ -1107,12 +1183,18 @@ function StageRisk({risk, setRisk, pathCfg}) {
       </div>
 
       <div className="card">
-        <div className="card-label">Is this an additional property?</div>
-        <label>Is this a second home or investment, rather than your primary residence?</label>
-        <Chips multi={false}
-          options={[{id:"primary",label:"No — primary home"},{id:"second",label:"Second home"},{id:"investment",label:"Investment / income"}]}
-          selected={risk.isAdditionalProperty} onChange={v=>set("isAdditionalProperty",v)}/>
-        {(risk.isAdditionalProperty==="second"||risk.isAdditionalProperty==="investment") && (
+        <div className="card-label">Property type & income</div>
+        {family && family.purchaseType && family.purchaseType!=="primary" ? (
+          <p className="hint">You told us earlier this is {family.purchaseType==="second"?"a second home":family.purchaseType==="seasonal"?"a seasonal / part-year home":family.purchaseType==="investment"?"an investment / rental property":"an additional property"}. Let's get into the money side of that.</p>
+        ) : (
+          <>
+            <label>Is this a second home or investment, rather than your primary residence?</label>
+            <Chips multi={false}
+              options={[{id:"primary",label:"No — primary home"},{id:"second",label:"Second home"},{id:"investment",label:"Investment / income"}]}
+              selected={risk.isAdditionalProperty} onChange={v=>set("isAdditionalProperty",v)}/>
+          </>
+        )}
+        {(risk.isAdditionalProperty==="second"||risk.isAdditionalProperty==="investment"||(family && family.purchaseType && !["","primary"].includes(family.purchaseType))) && (
           <>
             <label style={{marginTop:"14px"}}>How will it be used for income?</label>
             <Chips multi={false}
@@ -1284,8 +1366,14 @@ function StageOutput({loading,error,aiOutput,localOutput,localLoading,handleCopy
   const alignColor=a=>a==="strong"?C.sage:a==="moderate"?C.gold:C.blush;
   const tagColor=t=>t==="alignment"?C.gold:t==="tension"?C.blush:"#a8cbb0";
 
+  const saveAsPDF = () => { window.print(); };
+
   return (
     <div ref={outputRef}>
+      <div className="no-print" style={{display:"flex",gap:10,justifyContent:"flex-end",flexWrap:"wrap",marginBottom:8}}>
+        <button className="save-btn" onClick={saveAsPDF}>⬇ Save as PDF</button>
+        <button className="save-btn ghost" onClick={handleCopy}>{copied?"✓ Copied!":"Copy full report"}</button>
+      </div>
       <h1 className="section-title">Your Analysis</h1>
       <p className="section-desc" style={{marginBottom:28}}>Priorities mapped. Future horizon assessed. Local intel pulled. Here's what matters.</p>
 
