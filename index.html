@@ -548,7 +548,7 @@ Return ONLY valid JSON:
 Be specific. Name actual neighborhoods, schools, trails, quirks.`;
     try {
       const resp=await fetch((_CFG.apiEndpoint || "/.netlify/functions/analyze"),{method:"POST",headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({model:"claude-sonnet-4-6",max_tokens:1200,system:sys,
+        body:JSON.stringify({model:"claude-haiku-4-5-20251001",max_tokens:1200,system:sys,
           messages:[{role:"user",content:`Target area: ${location.targetAreas}\nPath: ${pathCfg?.title}\nFamily profile:\n${JSON.stringify({location:intake.location,future:intake.future,home:intake.home},null,2)}`}]})});
       const raw=await readStreamedText(resp);
       if(raw){
@@ -600,7 +600,7 @@ Be specific. Name actual neighborhoods, schools, trails, quirks.`;
     const callOne = async (sys, tokens) => {
       const resp = await fetch((_CFG.apiEndpoint || "/.netlify/functions/analyze"), {
         method:"POST", headers:{"Content-Type":"application/json"},
-        body:JSON.stringify({model:"claude-sonnet-4-6", max_tokens:tokens, system:sys,
+        body:JSON.stringify({model:"claude-haiku-4-5-20251001", max_tokens:tokens, system:sys,
           messages:[{role:"user", content:userMsg}]})
       });
       const raw = await readStreamedText(resp);
