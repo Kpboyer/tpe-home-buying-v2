@@ -61,11 +61,11 @@ exports.handler = async (event) => {
   if (!messages || !Array.isArray(messages))
     return { statusCode: 400, headers: { ...cors, "Content-Type": "application/json" }, body: JSON.stringify({ error: "Request must include a messages array." }) };
 
-  const model = payload.model || "claude-sonnet-4-6";
+  const model = payload.model || "claude-haiku-4-5-20251001";
 
   // Abort safety net at 22s so we return clean JSON, never an HTML platform error.
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 22000);
+  const timer = setTimeout(() => ctrl.abort(), 24000);
   let data, status;
   try {
     const resp = await fetch("https://api.anthropic.com/v1/messages", {
