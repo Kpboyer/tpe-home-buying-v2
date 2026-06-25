@@ -463,7 +463,7 @@ function App() {
   const [future, setFuture] = React.useState({
     horizon:"",retirementWindow:"",communityTypes:[],agingInPlaceImportance:0,
     kidsLeavingTimeline:"",wantToDownsize:"",openToRelocation:"",retirementConcerns:"",
-    partnerRetirementVisions:["",""],
+    partnerRetirementVisions:["",""]
   });
   const [partners, setPartners] = React.useState(()=>
     [0,1].reduce((acc,i)=>{acc[i]={locationFactorPriorities:{},homeFactorPriorities:{},dealbreakers:"",flexibles:"",biggestFear:""};return acc;},{})
