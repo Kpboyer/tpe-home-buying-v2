@@ -463,7 +463,7 @@ function App() {
   const [future, setFuture] = React.useState({
     horizon:"",retirementWindow:"",communityTypes:[],agingInPlaceImportance:0,
     kidsLeavingTimeline:"",wantToDownsize:"",openToRelocation:"",retirementConcerns:"",
-    partnerRetirementVisions:["",""]
+    partnerRetirementVisions:["",""],
   });
   const [partners, setPartners] = React.useState(()=>
     [0,1].reduce((acc,i)=>{acc[i]={locationFactorPriorities:{},homeFactorPriorities:{},dealbreakers:"",flexibles:"",biggestFear:""};return acc;},{})
@@ -563,50 +563,64 @@ Be specific. Name actual neighborhoods, schools, trails, quirks.`;
   };
 
   // Robustly parse JSON from an AI response. Strict first; then a
-  // character-by-character repair that inserts missing commas between
-  // adjacent values (the most common AI slip), strips trailing commas,
-  // and normalizes smart quotes \u2014 without touching string contents.
+  // character-by-character repair that (1) extracts exactly the first balanced
+  // top-level object, ignoring any stray text after it, and (2) inserts missing
+  // commas between adjacent values \u2014 without touching string contents.
   const parseLooseJSON = (raw) => {
     try { return JSON.parse(raw); } catch (e) {}
 
-    let t = raw.replace(/[\u201C\u201D]/g, '"').replace(/[\u2018\u2019]/g, "'");
+    let src = raw.replace(/[\u201C\u201D]/g, '"').replace(/[\u2018\u2019]/g, "'");
 
-    // Find the index of the next non-whitespace char after position k.
+    // Step 1: extract the first balanced {...} object, tracking string state,
+    // so we ignore anything before the first { or after its matching }.
+    const start = src.indexOf("{");
+    if (start === -1) throw new Error("No JSON object found");
+    let depth = 0, end = -1, inStr = false, esc = false;
+    for (let k = start; k < src.length; k++) {
+      const c = src[k];
+      if (inStr) {
+        if (esc) esc = false;
+        else if (c === "\\") esc = true;
+        else if (c === '"') inStr = false;
+        continue;
+      }
+      if (c === '"') inStr = true;
+      else if (c === "{") depth++;
+      else if (c === "}") { depth--; if (depth === 0) { end = k; break; } }
+    }
+    const body = end === -1 ? src.slice(start) : src.slice(start, end + 1);
+
+    // Step 2: insert missing commas between adjacent values inside `body`.
     const nextNonWs = (str, k) => {
       let m = k + 1;
       while (m < str.length && /\s/.test(str[m])) m++;
       return m < str.length ? str[m] : "";
     };
-
-    let out = "";
-    let inStr = false, esc = false;
-    for (let k = 0; k < t.length; k++) {
-      const c = t[k];
-
-      if (inStr) {
+    let out = "", s2InStr = false, s2Esc = false, d = 0;
+    for (let k = 0; k < body.length; k++) {
+      const c = body[k];
+      if (s2InStr) {
         out += c;
-        if (esc) { esc = false; }
-        else if (c === "\\") { esc = true; }
+        if (s2Esc) s2Esc = false;
+        else if (c === "\\") s2Esc = true;
         else if (c === '"') {
-          inStr = false;
-          // a string just closed \u2014 if the next value starts immediately, add a comma
-          const nx = nextNonWs(t, k);
-          if (nx === '"' || nx === "{" || nx === "[") out += ",";
+          s2InStr = false;
+          const nx = nextNonWs(body, k);
+          if (d > 0 && (nx === '"' || nx === "{" || nx === "[")) out += ",";
         }
         continue;
       }
-
-      // not in a string
-      if (c === '"') { out += c; inStr = true; continue; }
+      if (c === '"') { out += c; s2InStr = true; continue; }
+      if (c === "{" || c === "[") d++;
+      if (c === "}" || c === "]") d--;
       out += c;
-      if (c === "}" || c === "]") {
-        const nx = nextNonWs(t, k);
+      if ((c === "}" || c === "]") && d > 0) {
+        const nx = nextNonWs(body, k);
         if (nx === '"' || nx === "{" || nx === "[") out += ",";
       }
     }
 
-    t = out.replace(/,\s*([}\]])/g, "$1").replace(/,\s*,/g, ",");
-
+    let t = out.replace(/,\s*([}\]])/g, "$1").replace(/,\s*,/g, ",");
     try { return JSON.parse(t); } catch (e2) {
       const t2 = t.replace(/[\u0000-\u001F]+/g, " ").replace(/,\s*([}\]])/g, "$1");
       return JSON.parse(t2);
