@@ -562,24 +562,54 @@ Be specific. Name actual neighborhoods, schools, trails, quirks.`;
     setLocalLoading(false);
   };
 
-  // Parse JSON that may have minor AI formatting slips (trailing commas,
-  // missing commas between elements, smart quotes). Tries strict first,
-  // then applies safe repairs.
-  const parseLooseJSON = (text) => {
-    try { return JSON.parse(text); } catch (e) {}
-    let t = text;
-    // normalize smart quotes
-    t = t.replace(/[\u201C\u201D]/g, '"').replace(/[\u2018\u2019]/g, "'");
-    // remove trailing commas before } or ]
-    t = t.replace(/,\s*([}\]])/g, "$1");
-    // insert missing commas between adjacent objects/arrays/strings:  }  {  ->  },{
-    t = t.replace(/(["}\]])\s*\n\s*(["{\[])/g, "$1,$2");
-    t = t.replace(/}\s*{/g, "},{");
-    t = t.replace(/]\s*\[/g, "],[");
+  // Robustly parse JSON from an AI response. Strict first; then a
+  // character-by-character repair that inserts missing commas between
+  // adjacent values (the most common AI slip), strips trailing commas,
+  // and normalizes smart quotes \u2014 without touching string contents.
+  const parseLooseJSON = (raw) => {
+    try { return JSON.parse(raw); } catch (e) {}
+
+    let t = raw.replace(/[\u201C\u201D]/g, '"').replace(/[\u2018\u2019]/g, "'");
+
+    // Find the index of the next non-whitespace char after position k.
+    const nextNonWs = (str, k) => {
+      let m = k + 1;
+      while (m < str.length && /\s/.test(str[m])) m++;
+      return m < str.length ? str[m] : "";
+    };
+
+    let out = "";
+    let inStr = false, esc = false;
+    for (let k = 0; k < t.length; k++) {
+      const c = t[k];
+
+      if (inStr) {
+        out += c;
+        if (esc) { esc = false; }
+        else if (c === "\\") { esc = true; }
+        else if (c === '"') {
+          inStr = false;
+          // a string just closed \u2014 if the next value starts immediately, add a comma
+          const nx = nextNonWs(t, k);
+          if (nx === '"' || nx === "{" || nx === "[") out += ",";
+        }
+        continue;
+      }
+
+      // not in a string
+      if (c === '"') { out += c; inStr = true; continue; }
+      out += c;
+      if (c === "}" || c === "]") {
+        const nx = nextNonWs(t, k);
+        if (nx === '"' || nx === "{" || nx === "[") out += ",";
+      }
+    }
+
+    t = out.replace(/,\s*([}\]])/g, "$1").replace(/,\s*,/g, ",");
+
     try { return JSON.parse(t); } catch (e2) {
-      // last resort: strip any control chars and retry once
-      t = t.replace(/[\u0000-\u001F]+/g, " ").replace(/,\s*([}\]])/g, "$1");
-      return JSON.parse(t);
+      const t2 = t.replace(/[\u0000-\u001F]+/g, " ").replace(/,\s*([}\]])/g, "$1");
+      return JSON.parse(t2);
     }
   };
 
