@@ -621,10 +621,23 @@ Be specific. Name actual neighborhoods, schools, trails, quirks.`;
     }
 
     let t = out.replace(/,\s*([}\]])/g, "$1").replace(/,\s*,/g, ",");
-    try { return JSON.parse(t); } catch (e2) {
-      const t2 = t.replace(/[\u0000-\u001F]+/g, " ").replace(/,\s*([}\]])/g, "$1");
-      return JSON.parse(t2);
+    try { return JSON.parse(t); } catch (e2) {}
+    let t2 = t.replace(/[\u0000-\u001F]+/g, " ").replace(/,\s*([}\]])/g, "$1");
+    try { return JSON.parse(t2); } catch (e3) {}
+    // Last resort: response may be truncated. Close any open string and
+    // balance unclosed brackets so a partial object still parses.
+    let fix = t2, open2 = false, e2c = false, stack = [];
+    for (let k = 0; k < fix.length; k++) {
+      const c = fix[k];
+      if (open2) { if (e2c) e2c = false; else if (c === "\\") e2c = true; else if (c === '"') open2 = false; continue; }
+      if (c === '"') open2 = true;
+      else if (c === "{" || c === "[") stack.push(c);
+      else if (c === "}" || c === "]") stack.pop();
     }
+    if (open2) fix += '"';
+    fix = fix.replace(/,\s*$/, "");
+    while (stack.length) { const b = stack.pop(); fix += b === "{" ? "}" : "]"; }
+    return JSON.parse(fix);
   };
 
   const runAnalysis = async () => {
@@ -670,6 +683,10 @@ Be specific. Name actual neighborhoods, schools, trails, quirks.`;
       });
       const raw = await readStreamedText(resp);
       if(!raw){ throw new Error("Empty response from AI"); }
+      // If the response was cut off (no closing brace), it was likely truncated.
+      if(raw.lastIndexOf("}") === -1){
+        throw new Error("The response was cut off. Try again, or shorten very long free-text answers slightly.");
+      }
       const stripped = raw.replace(/```json[\s\S]*?```|```[\s\S]*?```/g, m=>m.slice(m.indexOf("{")));
       const a = stripped.indexOf("{"), b = stripped.lastIndexOf("}");
       if(a===-1||b===-1){ throw new Error("No JSON found in response"); }
@@ -679,8 +696,8 @@ Be specific. Name actual neighborhoods, schools, trails, quirks.`;
     try {
       // Run both halves in parallel \u2014 each is small enough to finish well under the limit.
       const [partA, partB] = await Promise.all([
-        callOne(sysA, 1100),
-        callOne(sysB, 1100),
+        callOne(sysA, 2000),
+        callOne(sysB, 2000),
       ]);
       setAiOutput({ ...partA, ...partB });
     } catch(e){
